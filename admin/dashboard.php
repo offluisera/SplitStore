@@ -77,6 +77,12 @@ if ($redis && $redis->exists($cacheKey)) {
             <a href="transactions.php" class="flex items-center gap-4 p-4 rounded-2xl text-xs font-black uppercase tracking-widest text-zinc-500 sidebar-item transition">
                 <i data-lucide="banknote" class="w-4 h-4"></i> Financeiro
             </a>
+            <a href="planos.php" class="flex items-center gap-4 p-4 rounded-2xl text-xs font-black uppercase tracking-widest text-zinc-500 sidebar-item transition">
+                <i data-lucide="banknote" class="w-4 h-4"></i> Planos
+            </a>
+            <a href="promocoes.php" class="flex items-center gap-4 p-4 rounded-2xl text-xs font-black uppercase tracking-widest text-zinc-500 sidebar-item transition">
+                <i data-lucide="banknote" class="w-4 h-4"></i> Promocoes
+            </a>
             <a href="partners.php" class="flex items-center gap-4 p-4 rounded-2xl text-xs font-black uppercase tracking-widest text-zinc-500 sidebar-item transition">
                 <i data-lucide="users" class="w-4 h-4"></i> Parceiros (Site)
             </a>
