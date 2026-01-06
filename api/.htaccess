@@ -1,0 +1,90 @@
+# ============================================
+# SPLITSTORE - API .HTACCESS
+# ============================================
+# Configuração de roteamento e segurança
+# ============================================
+
+# Habilitar Rewrite Engine
+RewriteEngine On
+RewriteBase /api/
+
+# ============================================
+# SEGURANÇA
+# ============================================
+
+# Bloquear acesso a arquivos sensíveis
+<FilesMatch "\.(env|sql|log|ini|bak|backup)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Proteger contra directory listing
+Options -Indexes
+
+# ============================================
+# HEADERS DE SEGURANÇA
+# ============================================
+
+# CORS Headers
+Header always set Access-Control-Allow-Origin "*"
+Header always set Access-Control-Allow-Methods "POST, GET, OPTIONS, DELETE, PUT"
+Header always set Access-Control-Allow-Headers "X-API-Key, X-API-Secret, Content-Type, Authorization"
+Header always set Access-Control-Max-Age "3600"
+
+# Security Headers
+Header always set X-Content-Type-Options "nosniff"
+Header always set X-Frame-Options "DENY"
+Header always set X-XSS-Protection "1; mode=block"
+
+# ============================================
+# ROTEAMENTO
+# ============================================
+
+# Permitir requisições OPTIONS (preflight CORS)
+RewriteCond %{REQUEST_METHOD} OPTIONS
+RewriteRule ^(.*)$ $1 [R=200,L]
+
+# Redirecionar tudo para index.php
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php [QSA,L]
+
+# ============================================
+# CACHE
+# ============================================
+
+# Não fazer cache das respostas da API
+<IfModule mod_headers.c>
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+    Header set Pragma "no-cache"
+    Header set Expires "0"
+</IfModule>
+
+# ============================================
+# COMPRESSÃO
+# ============================================
+
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE application/json
+    AddOutputFilterByType DEFLATE text/html
+    AddOutputFilterByType DEFLATE text/plain
+    AddOutputFilterByType DEFLATE text/xml
+</IfModule>
+
+# ============================================
+# PROTEÇÃO CONTRA ATAQUES
+# ============================================
+
+# Limitar tamanho do body para prevenir DoS
+LimitRequestBody 1048576
+
+# Timeout para requisições
+TimeOut 30
+
+# ============================================
+# LOGS
+# ============================================
+
+# Log de erros personalizado (se disponível)
+# ErrorLog ${APACHE_LOG_DIR}/splitstore_api_error.log
+# CustomLog ${APACHE_LOG_DIR}/splitstore_api_access.log combined

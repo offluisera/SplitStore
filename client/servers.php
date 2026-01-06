@@ -3,7 +3,7 @@
  * ============================================
  * SPLITSTORE - GERENCIAMENTO DE SERVIDORES
  * ============================================
- * Design Premium + Correções SQL + Modal Custom
+ * VERSÃO FINAL - TODAS AS CORREÇÕES APLICADAS
  */
 
 session_start();
@@ -15,48 +15,66 @@ if (!isset($_SESSION['store_logged']) || $_SESSION['store_logged'] !== true) {
     exit;
 }
 
+// CORREÇÃO CRÍTICA: Verificar se store_id existe
+if (!isset($_SESSION['store_id']) || empty($_SESSION['store_id'])) {
+    die("ERRO CRÍTICO: store_id não encontrado na sessão. <a href='login.php'>Faça login novamente</a>");
+}
+
 $store_id = $_SESSION['store_id'];
-$store_name = $_SESSION['store_name'];
-$store_plan = $_SESSION['store_plan'];
+$store_name = $_SESSION['store_name'] ?? 'Loja';
+$store_plan = $_SESSION['store_plan'] ?? 'basic';
 
 $message = "";
 $messageType = "";
 
 // ========================================
-// GERAR NOVAS CREDENCIAIS (CORRIGIDO)
+// GERAR NOVAS CREDENCIAIS
 // ========================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'generate_credentials') {
     try {
+        error_log("=== GERAÇÃO DE CREDENCIAIS ===");
+        error_log("Store ID: " . $store_id);
+        
         // Gera credenciais aleatórias seguras
         $api_key = 'ca_' . bin2hex(random_bytes(16));
         $api_secret = 'ck_' . bin2hex(random_bytes(24));
         
-        // CORRIGIDO: Usando as colunas corretas da tabela stores
+        error_log("API Key gerada: " . $api_key);
+        error_log("API Secret gerada: " . $api_secret);
+        
+        // UPDATE usando 'id' (que é a primary key)
         $stmt = $pdo->prepare("
-            UPDATE integrations 
+            UPDATE stores 
             SET api_key = ?, 
                 api_secret = ?, 
                 updated_at = NOW() 
             WHERE id = ?
         ");
         
-        if ($stmt->execute([$api_key, $api_secret, $store_id])) {
-            // Redireciona para evitar reenvio do form
+        $result = $stmt->execute([$api_key, $api_secret, $store_id]);
+        $affectedRows = $stmt->rowCount();
+        
+        error_log("Execute result: " . ($result ? 'true' : 'false'));
+        error_log("Affected rows: " . $affectedRows);
+        
+        if ($result && $affectedRows > 0) {
+            error_log("✅ Credenciais salvas com sucesso!");
             header('Location: servers.php?success=generated');
             exit;
         } else {
-            $message = "Erro ao gerar credenciais.";
+            error_log("❌ Nenhuma linha foi atualizada");
+            $message = "Erro: Nenhuma alteração foi feita. Verifique se o registro existe.";
             $messageType = "error";
         }
     } catch (PDOException $e) {
-        error_log("Credentials Error: " . $e->getMessage());
-        $message = "Erro no banco de dados: " . $e->getMessage();
+        error_log("❌ Erro SQL: " . $e->getMessage());
+        $message = "Erro ao gerar credenciais: " . $e->getMessage();
         $messageType = "error";
     }
 }
 
 // ========================================
-// BUSCAR CREDENCIAIS ATUAIS (CORRIGIDO)
+// BUSCAR CREDENCIAIS ATUAIS
 // ========================================
 $credentials = [
     'api_key' => null,
@@ -65,18 +83,28 @@ $credentials = [
 ];
 
 try {
-    // CORRIGIDO: Buscando apenas as colunas que existem
-    $stmt = $pdo->prepare("SELECT api_key, api_secret FROM integrations WHERE id = ?");
+    // SELECT usando 'id' (primary key)
+    $stmt = $pdo->prepare("
+        SELECT id, store_name, api_key, api_secret 
+        FROM stores 
+        WHERE id = ?
+    ");
     $stmt->execute([$store_id]);
     $result = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if ($result) {
+        error_log("Store encontrado: " . $result['store_name']);
+        
         $credentials['api_key'] = $result['api_key'];
         $credentials['api_secret'] = $result['api_secret'];
         $credentials['has_credentials'] = !empty($result['api_key']) && !empty($result['api_secret']);
+        
+        error_log("Tem credenciais: " . ($credentials['has_credentials'] ? 'SIM' : 'NÃO'));
+    } else {
+        error_log("❌ Store não encontrado com id = " . $store_id);
     }
 } catch (PDOException $e) {
-    error_log("Fetch Credentials Error: " . $e->getMessage());
+    error_log("Erro ao buscar credenciais: " . $e->getMessage());
     $message = "Erro ao buscar credenciais: " . $e->getMessage();
     $messageType = "error";
 }
@@ -171,7 +199,6 @@ if (isset($_GET['success']) && $_GET['success'] === 'generated') {
             background: linear-gradient(135deg, #ef4444 0%, #991b1b 100%);
         }
 
-        /* MODAL PERSONALIZADO */
         .modal-overlay {
             display: none;
             position: fixed;
@@ -280,7 +307,6 @@ if (isset($_GET['success']) && $_GET['success'] === 'generated') {
 
     <main class="flex-1 p-12">
         
-        <!-- Header Premium -->
         <header class="mb-16">
             <div class="flex items-center gap-4 mb-4">
                 <div class="w-16 h-16 gradient-red rounded-2xl flex items-center justify-center shadow-lg shadow-red-900/40">
@@ -304,9 +330,7 @@ if (isset($_GET['success']) && $_GET['success'] === 'generated') {
             </div>
         <?php endif; ?>
 
-        <!-- Status Hero Card -->
         <div class="glass-strong rounded-[2.5rem] p-10 mb-12 border-white/10 relative overflow-hidden">
-            <!-- Background Pattern -->
             <div class="absolute inset-0 opacity-5">
                 <div class="absolute inset-0" style="background-image: radial-gradient(circle, #ef4444 1px, transparent 1px); background-size: 40px 40px;"></div>
             </div>
@@ -344,7 +368,6 @@ if (isset($_GET['success']) && $_GET['success'] === 'generated') {
 
         <div class="grid lg:grid-cols-5 gap-8">
             
-            <!-- Credenciais API (3 colunas) -->
             <div class="lg:col-span-3 glass-strong rounded-[2.5rem] p-10 border-white/10">
                 <div class="flex items-center justify-between mb-10">
                     <div>
@@ -365,7 +388,6 @@ if (isset($_GET['success']) && $_GET['success'] === 'generated') {
                 <?php if ($credentials['has_credentials']): ?>
                     <div class="space-y-6">
                         
-                        <!-- API Key -->
                         <div class="credential-box glass rounded-2xl p-6 border border-white/10 hover:border-red-600/30">
                             <div class="flex items-center justify-between mb-4">
                                 <div class="flex items-center gap-3">
@@ -390,7 +412,6 @@ if (isset($_GET['success']) && $_GET['success'] === 'generated') {
                                    class="w-full credential-input p-4 rounded-xl text-sm font-mono text-white outline-none">
                         </div>
 
-                        <!-- API Secret -->
                         <div class="credential-box glass rounded-2xl p-6 border border-white/10 hover:border-red-600/30">
                             <div class="flex items-center justify-between mb-4">
                                 <div class="flex items-center gap-3">
@@ -415,7 +436,6 @@ if (isset($_GET['success']) && $_GET['success'] === 'generated') {
                                    class="w-full credential-input p-4 rounded-xl text-sm font-mono text-white outline-none">
                         </div>
 
-                        <!-- Aviso de Segurança Premium -->
                         <div class="glass-strong p-6 rounded-2xl border border-yellow-600/30 bg-yellow-600/5">
                             <div class="flex items-start gap-4">
                                 <div class="w-12 h-12 bg-yellow-600/20 rounded-xl flex items-center justify-center flex-shrink-0">
@@ -432,7 +452,6 @@ if (isset($_GET['success']) && $_GET['success'] === 'generated') {
                         </div>
                     </div>
                 <?php else: ?>
-                    <!-- Estado Vazio Premium -->
                     <div class="text-center py-24 opacity-40">
                         <div class="w-24 h-24 bg-zinc-900 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-white/5">
                             <i data-lucide="key-round" class="w-12 h-12 text-zinc-700"></i>
@@ -447,7 +466,6 @@ if (isset($_GET['success']) && $_GET['success'] === 'generated') {
                 <?php endif; ?>
             </div>
 
-            <!-- Tutorial (2 colunas) -->
             <div class="lg:col-span-2 glass-strong rounded-[2.5rem] p-10 border-white/10">
                 <div class="mb-8">
                     <h3 class="text-xl font-black uppercase italic tracking-tight mb-2 gradient-text">
@@ -460,7 +478,6 @@ if (isset($_GET['success']) && $_GET['success'] === 'generated') {
 
                 <div class="space-y-6">
                     
-                    <!-- Step 1 -->
                     <div class="flex gap-4">
                         <div class="w-12 h-12 gradient-red rounded-xl flex items-center justify-center flex-shrink-0 font-black shadow-lg">
                             1
@@ -477,7 +494,6 @@ if (isset($_GET['success']) && $_GET['success'] === 'generated') {
                         </div>
                     </div>
 
-                    <!-- Step 2 -->
                     <div class="flex gap-4">
                         <div class="w-12 h-12 bg-zinc-800 rounded-xl flex items-center justify-center flex-shrink-0 font-black">
                             2
@@ -490,7 +506,6 @@ if (isset($_GET['success']) && $_GET['success'] === 'generated') {
                         </div>
                     </div>
 
-                    <!-- Step 3 -->
                     <div class="flex gap-4">
                         <div class="w-12 h-12 bg-zinc-800 rounded-xl flex items-center justify-center flex-shrink-0 font-black">
                             3
@@ -509,7 +524,6 @@ if (isset($_GET['success']) && $_GET['success'] === 'generated') {
                         </div>
                     </div>
 
-                    <!-- Step 4 -->
                     <div class="flex gap-4">
                         <div class="w-12 h-12 bg-zinc-800 rounded-xl flex items-center justify-center flex-shrink-0 font-black">
                             4
@@ -526,7 +540,6 @@ if (isset($_GET['success']) && $_GET['success'] === 'generated') {
                     </div>
                 </div>
 
-                <!-- Links -->
                 <div class="mt-10 pt-8 border-t border-white/5">
                     <div class="space-y-3">
                         <a href="#" class="flex items-center gap-3 text-xs text-zinc-500 hover:text-red-600 transition p-3 rounded-xl hover:bg-white/5">
@@ -548,7 +561,6 @@ if (isset($_GET['success']) && $_GET['success'] === 'generated') {
 
     </main>
 
-    <!-- MODAL PERSONALIZADO -->
     <div id="confirmModal" class="modal-overlay">
         <div class="modal-content">
             <div class="modal-icon">
@@ -580,7 +592,6 @@ if (isset($_GET['success']) && $_GET['success'] === 'generated') {
         </div>
     </div>
 
-    <!-- Form Oculto -->
     <form id="generateForm" method="POST" style="display: none;">
         <input type="hidden" name="action" value="generate_credentials">
     </form>
@@ -601,14 +612,12 @@ if (isset($_GET['success']) && $_GET['success'] === 'generated') {
             document.getElementById('generateForm').submit();
         }
 
-        // Fecha modal com ESC
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
                 closeConfirmModal();
             }
         });
 
-        // Fecha modal clicando fora
         document.getElementById('confirmModal').addEventListener('click', function(e) {
             if (e.target === this) {
                 closeConfirmModal();
@@ -620,7 +629,6 @@ if (isset($_GET['success']) && $_GET['success'] === 'generated') {
             input.select();
             document.execCommand('copy');
             
-            // Feedback visual premium
             const originalHTML = button.innerHTML;
             button.innerHTML = '<i data-lucide="check" class="w-4 h-4"></i> Copiado!';
             button.classList.remove('bg-red-600/10', 'text-red-600');
