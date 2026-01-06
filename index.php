@@ -709,7 +709,17 @@ function formatMoney($amount) {
                                 </ul>
 
                                 <!-- CTA Button -->
-                                <a href="checkout.php?plan=<?= strtolower($p['nome']) ?>" 
+                                <?php 
+                                $planSlug = strtolower(str_replace(' ', '', $p['nome'])); 
+                                // Mapeia nomes para slugs corretos
+                                $planMap = [
+                                    'starter' => 'basic',
+                                    'enterprise' => 'pro', 
+                                    'gerencial' => 'ultra'
+                                ];
+                                $finalSlug = $planMap[$planSlug] ?? $planSlug;
+                                ?>
+                                <a href="checkout.php?plan=<?= $finalSlug ?>" 
                                    class="block w-full py-4 rounded-xl font-black text-sm uppercase tracking-wider text-center transition-all <?= $p['destaque'] ? 'bg-red-600 text-white hover:bg-red-700 glow-red' : 'bg-white text-black hover:bg-zinc-200' ?>">
                                     Assinar Agora
                                 </a>
