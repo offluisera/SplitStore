@@ -1,10 +1,10 @@
 <?php
 /**
  * ============================================
- * SPLITSTORE - API ROUTER
+ * SPLITSTORE - API ROUTER (UNIVERSAL)
  * ============================================
- * Router principal para endpoints da API
- * Versão: 1.0.0
+ * Funciona com Apache (.htaccess) e NGINX
+ * Versão: 2.0.0
  */
 
 // Carregar configurações
@@ -46,13 +46,59 @@ function logAPI($endpoint, $method, $store_id, $status, $message = '') {
     }
 }
 
-// Pegar URI e Método
-$requestUri = $_SERVER['REQUEST_URI'];
+// ============================================
+// DETECÇÃO INTELIGENTE DE ROTA
+// ============================================
+
+$uri = null;
 $requestMethod = $_SERVER['REQUEST_METHOD'];
 
-// Remove query string e base path
-$uri = parse_url($requestUri, PHP_URL_PATH);
-$uri = str_replace('/api', '', $uri);
+// Método 1: PATH_INFO (preferencial)
+if (isset($_SERVER['PATH_INFO']) && !empty($_SERVER['PATH_INFO'])) {
+    $uri = $_SERVER['PATH_INFO'];
+    error_log("Rota detectada via PATH_INFO: " . $uri);
+}
+// Método 2: REQUEST_URI (nginx)
+elseif (isset($_SERVER['REQUEST_URI'])) {
+    $requestUri = $_SERVER['REQUEST_URI'];
+    // Remove query string
+    $uri = parse_url($requestUri, PHP_URL_PATH);
+    // Remove /api e /index.php
+    $uri = preg_replace('#^/api(/index\.php)?#', '', $uri);
+    error_log("Rota detectada via REQUEST_URI: " . $uri);
+}
+// Método 3: Query string (fallback)
+elseif (isset($_GET['route'])) {
+    $uri = '/' . ltrim($_GET['route'], '/');
+    error_log("Rota detectada via query string: " . $uri);
+}
+
+// Se ainda não tiver rota, verificar se é acesso direto
+if (empty($uri) || $uri === '/') {
+    jsonResponse([
+        'success' => true,
+        'message' => 'SplitStore API está online',
+        'version' => '2.0.0',
+        'timestamp' => date('Y-m-d H:i:s'),
+        'endpoints' => [
+            '/plugin/verify',
+            '/plugin/purchases/pending',
+            '/plugin/purchases/confirm',
+            '/plugin/player/logout',
+            '/plugin/server/status'
+        ],
+        'documentation' => 'https://docs.splitstore.com.br',
+        'help' => [
+            'Se você está vendo isso, a API está acessível',
+            'Configure o roteamento (nginx.conf ou .htaccess)',
+            'Teste os endpoints com /api/simple_test.php',
+            'Rode diagnóstico em /api/diagnostico.php'
+        ]
+    ]);
+}
+
+// Limpar e normalizar URI
+$uri = '/' . trim($uri, '/');
 
 // Obter dados do body
 $input = file_get_contents('php://input');
@@ -65,26 +111,33 @@ if ($data === null) {
 
 // Log da requisição
 error_log("=== API REQUEST ===");
-error_log("URI: " . $uri);
 error_log("Method: " . $requestMethod);
+error_log("URI: " . $uri);
 error_log("Body: " . $input);
-error_log("Parsed Data: " . print_r($data, true));
+error_log("Headers: " . json_encode(getallheaders()));
 
-// Middleware de autenticação
+// ============================================
+// MIDDLEWARE DE AUTENTICAÇÃO
+// ============================================
+
 $auth = PluginAuthMiddleware::authenticate();
 
 if (!$auth['success']) {
     logAPI($uri, $requestMethod, null, 401, $auth['message']);
     jsonResponse([
         'success' => false,
-        'error' => $auth['message']
+        'error' => $auth['message'],
+        'timestamp' => date('Y-m-d H:i:s')
     ], 401);
 }
 
 $store_id = $auth['store_id'];
 $controller = new PluginController($pdo, $store_id);
 
-// Rotas da API
+// ============================================
+// ROTEAMENTO DE ENDPOINTS
+// ============================================
+
 try {
     switch ($uri) {
         // Verificar credenciais
@@ -142,14 +195,15 @@ try {
             logAPI($uri, $requestMethod, $store_id, 404, 'Endpoint não encontrado');
             jsonResponse([
                 'success' => false,
-                'error' => 'Endpoint não encontrado',
+                'error' => 'Endpoint não encontrado: ' . $uri,
                 'available_endpoints' => [
                     '/plugin/verify',
                     '/plugin/purchases/pending',
                     '/plugin/purchases/confirm',
                     '/plugin/player/logout',
                     '/plugin/server/status'
-                ]
+                ],
+                'help' => 'Verifique a documentação em https://docs.splitstore.com.br'
             ], 404);
             break;
     }
@@ -161,13 +215,18 @@ try {
     // Em desenvolvimento, retornar detalhes do erro
     $response = [
         'success' => false,
-        'error' => 'Erro interno do servidor'
+        'error' => 'Erro interno do servidor',
+        'timestamp' => date('Y-m-d H:i:s')
     ];
     
     // Adicionar detalhes apenas se DEBUG estiver ativo
     if (defined('DEBUG') && DEBUG === true) {
-        $response['message'] = $e->getMessage();
-        $response['trace'] = $e->getTraceAsString();
+        $response['debug'] = [
+            'message' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+            'trace' => $e->getTraceAsString()
+        ];
     }
     
     jsonResponse($response, 500);

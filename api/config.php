@@ -7,7 +7,9 @@
  */
 
 // Modo debug (DESATIVAR EM PRODUÇÃO!)
-define('DEBUG', true);
+if (!defined('DEBUG')) {
+    define('DEBUG', true);
+}
 
 // Configurações de erro
 if (DEBUG) {
@@ -23,14 +25,23 @@ if (DEBUG) {
 date_default_timezone_set('America/Sao_Paulo');
 
 // Configurações de log
-define('LOG_API_REQUESTS', true);
-define('LOG_FILE', __DIR__ . '/../logs/api.log');
+if (!defined('LOG_API_REQUESTS')) {
+    define('LOG_API_REQUESTS', true);
+}
+
+if (!defined('LOG_FILE')) {
+    define('LOG_FILE', __DIR__ . '/../logs/api.log');
+}
 
 // Rate limiting (requisições por hora)
-define('RATE_LIMIT', 1000);
+if (!defined('RATE_LIMIT')) {
+    define('RATE_LIMIT', 1000);
+}
 
 // Timeout de conexão (segundos)
-define('CONNECTION_TIMEOUT', 30);
+if (!defined('CONNECTION_TIMEOUT')) {
+    define('CONNECTION_TIMEOUT', 30);
+}
 
 // Função de log personalizada
 function apiLog($message, $level = 'INFO') {
@@ -44,11 +55,11 @@ function apiLog($message, $level = 'INFO') {
     // Criar diretório de logs se não existir
     $logDir = dirname(LOG_FILE);
     if (!is_dir($logDir)) {
-        mkdir($logDir, 0755, true);
+        @mkdir($logDir, 0755, true);
     }
     
     // Escrever no arquivo
-    file_put_contents(LOG_FILE, $logMessage, FILE_APPEND | LOCK_EX);
+    @file_put_contents(LOG_FILE, $logMessage, FILE_APPEND | LOCK_EX);
 }
 
 // Função para limpar logs antigos
@@ -69,7 +80,9 @@ function cleanOldLogs($days = 30) {
         }
     }
     
-    file_put_contents(LOG_FILE, implode('', $newLines));
+    if (count($newLines) > 0) {
+        file_put_contents(LOG_FILE, implode('', $newLines));
+    }
 }
 
 // Limpar logs antigos uma vez por dia (executar aleatoriamente)
