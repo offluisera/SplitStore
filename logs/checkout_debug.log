@@ -1,0 +1,8 @@
+[2026-01-07 03:42:24] === INÍCIO DO PROCESSAMENTO ===
+[2026-01-07 03:42:24] Método POST confirmado
+[2026-01-07 03:42:24] Conexão com banco OK
+[2026-01-07 03:42:24] Dados recebidos: {"first_name":"Luis Fernando","last_name":"Bordignon da Silva","email":"tiaoband@gmail.com","cpf":"133***","phone":"359***"}
+[2026-01-07 03:42:24] Iniciando validações
+[2026-01-07 03:42:24] Validações concluídas: {"total_errors":0}
+[2026-01-07 03:42:24] Erro ao verificar slug: {"error":"SQLSTATE[42S22]: Column not found: 1054 Unknown column 'store_slug' in 'where clause'"}
+[2026-01-07 03:42:24] Retornando ao checkout com erros: {"errors":["Erro ao verificar URL da loja. Tente novamente."]}
