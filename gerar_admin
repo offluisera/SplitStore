@@ -1,0 +1,66 @@
+<?php
+
+require_once 'includes/db.php';
+
+// ⚠️ ATENÇÃO: MUDE ESTA SENHA ANTES DE EXECUTAR!
+$username = 'luisera';
+$password = 'Lulisera@112'; // ⚠️ MUDE ISSO!
+$email = 'luisfernandoborsilva@gmail.com';
+
+if (empty($password) || $password === 'SuaSenhaForte123!@#') {
+    die("❌ ERRO: Você DEVE alterar a senha padrão antes de executar este script!\n");
+}
+
+// Validação de senha forte
+if (strlen($password) < 12) {
+    die("❌ ERRO: A senha deve ter no mínimo 12 caracteres!\n");
+}
+
+if (!preg_match('/[A-Z]/', $password) || !preg_match('/[a-z]/', $password) || 
+    !preg_match('/[0-9]/', $password) || !preg_match('/[^A-Za-z0-9]/', $password)) {
+    die("❌ ERRO: A senha deve conter: maiúsculas, minúsculas, números e caracteres especiais!\n");
+}
+
+try {
+    // Gera hash seguro com Argon2ID
+    $hash = password_hash($password, PASSWORD_ARGON2ID, [
+        'memory_cost' => 65536,  // 64 MB
+        'time_cost' => 4,         // 4 iterações
+        'threads' => 1            // 1 thread
+    ]);
+    
+    // Verifica se a tabela existe
+    $check = $pdo->query("SHOW TABLES LIKE 'admins'");
+    if ($check->rowCount() === 0) {
+        die("❌ ERRO: Tabela 'admins' não existe! Execute o SQL primeiro.\n");
+    }
+    
+    // Insere o admin
+    $stmt = $pdo->prepare("
+        INSERT INTO admins (username, password_hash, email, role) 
+        VALUES (?, ?, ?, 'super_admin')
+    ");
+    
+    if ($stmt->execute([$username, $hash, $email])) {
+        echo "✅ SUCESSO! Admin criado com as seguintes credenciais:\n\n";
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
+        echo "👤 Username: $username\n";
+        echo "🔑 Senha: $password\n";
+        echo "📧 Email: $email\n";
+        echo "🛡️ Nível: Super Admin\n";
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
+        echo "⚠️ IMPORTANTE:\n";
+        echo "1. Anote essas credenciais em local SEGURO\n";
+        echo "2. DELETE este arquivo (gerar_admin.php) AGORA!\n";
+        echo "3. Teste o login em: /admin/login.php\n\n";
+    } else {
+        echo "❌ Erro ao criar admin.\n";
+    }
+    
+} catch (PDOException $e) {
+    if ($e->getCode() == 23000) {
+        die("❌ ERRO: Username '$username' já existe no banco!\n");
+    }
+    die("❌ Erro no banco: " . $e->getMessage() . "\n");
+}
+?>

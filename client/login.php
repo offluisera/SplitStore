@@ -1,41 +1,64 @@
 <?php
-session_start();
-require_once '../includes/db.php';
+/**
+ * LOGIN DO CLIENTE
+ * Autenticação simplificada por email
+ */
 
-if (isset($_SESSION['store_logged'])) {
+session_start();
+
+// Se já está logado, redireciona
+if (isset($_SESSION['store_logged']) && $_SESSION['store_logged'] === true) {
     header('Location: dashboard.php');
     exit;
+}
+
+// Inclui conexão com banco
+$db_path = '../includes/db.php';
+if (file_exists($db_path)) {
+    require_once $db_path;
+} else {
+    die("Erro: Arquivo de conexão não encontrado em: " . $db_path);
 }
 
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $email = $_POST['email'] ?? '';
-    $password = $_POST['password'] ?? '';
+    $email = trim($_POST['email'] ?? '');
     
-    if (!empty($email)) {
+    if (!empty($email) && filter_var($email, FILTER_VALIDATE_EMAIL)) {
         try {
-            // Por enquanto usa email como autenticação (implementar senha em breve)
             $stmt = $pdo->prepare("SELECT * FROM stores WHERE email = ? AND status = 'active'");
             $stmt->execute([$email]);
             $store = $stmt->fetch();
             
             if ($store) {
+                // Define as variáveis de sessão
                 $_SESSION['store_logged'] = true;
                 $_SESSION['store_id'] = $store['id'];
                 $_SESSION['store_name'] = $store['store_name'];
                 $_SESSION['store_plan'] = $store['plan_type'];
+                $_SESSION['store_slug'] = $store['store_slug'];
+                $_SESSION['owner_name'] = $store['owner_name'];
+                
+                // Registra último acesso (opcional)
+                try {
+                    $update = $pdo->prepare("UPDATE stores SET updated_at = NOW() WHERE id = ?");
+                    $update->execute([$store['id']]);
+                } catch (PDOException $e) {
+                    // Ignora erro de update
+                }
                 
                 header('Location: dashboard.php');
                 exit;
             } else {
-                $error = "Loja não encontrada ou inativa.";
+                $error = "Loja não encontrada ou inativa. Verifique seu email.";
             }
         } catch (PDOException $e) {
-            $error = "Erro ao processar login.";
+            error_log("Login Error: " . $e->getMessage());
+            $error = "Erro ao processar login. Tente novamente.";
         }
     } else {
-        $error = "Preencha o e-mail.";
+        $error = "Digite um email válido.";
     }
 }
 ?>
@@ -44,7 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login Cliente | SplitStore</title>
+    <title>Login | SplitStore</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
@@ -95,8 +118,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
 
             <?php if ($error): ?>
-                <div class="bg-red-900/20 border border-red-600/30 text-red-500 p-4 rounded-2xl mb-6 text-sm font-bold text-center">
-                    <?= $error ?>
+                <div class="bg-red-900/20 border border-red-600/30 text-red-500 p-4 rounded-2xl mb-6 text-sm font-bold text-center flex items-center gap-3">
+                    <i data-lucide="alert-circle" class="w-5 h-5 flex-shrink-0"></i>
+                    <span><?= htmlspecialchars($error) ?></span>
                 </div>
             <?php endif; ?>
 
@@ -107,19 +131,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <i data-lucide="mail" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-600"></i>
                         <input type="email" name="email" required 
                                placeholder="seu@email.com"
+                               value="<?= isset($_POST['email']) ? htmlspecialchars($_POST['email']) : '' ?>"
                                class="w-full bg-white/5 border border-white/10 pl-12 pr-4 py-4 rounded-xl text-sm outline-none glow-focus transition">
                     </div>
-                </div>
-
-                <div>
-                    <label class="text-[10px] font-black uppercase text-zinc-600 ml-2 tracking-widest block mb-2">Senha (Temporário)</label>
-                    <div class="relative">
-                        <i data-lucide="lock" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-600"></i>
-                        <input type="password" name="password" 
-                               placeholder="••••••••"
-                               class="w-full bg-white/5 border border-white/10 pl-12 pr-4 py-4 rounded-xl text-sm outline-none glow-focus transition">
-                    </div>
-                    <p class="text-[10px] text-zinc-600 mt-2 ml-2">Login temporário apenas com e-mail</p>
+                    <p class="text-[9px] text-zinc-600 mt-2 ml-2">
+                        Use o email cadastrado na sua loja
+                    </p>
                 </div>
 
                 <button type="submit" 
@@ -128,11 +145,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </button>
             </form>
 
-            <div class="mt-8 pt-6 border-t border-white/5 text-center">
-                <p class="text-zinc-600 text-xs">
-                    Não tem uma loja? 
-                    <a href="../index.php#planos" class="text-red-600 hover:underline font-bold">Criar agora</a>
-                </p>
+            <div class="mt-8 pt-6 border-t border-white/5">
+                <div class="text-center space-y-4">
+                    <p class="text-zinc-600 text-xs">
+                        Não tem uma loja? 
+                        <a href="../index.php#planos" class="text-red-600 hover:underline font-bold">Criar agora</a>
+                    </p>
+                    
+                    <!-- Login de Teste -->
+                    <div class="glass p-4 rounded-2xl border border-green-600/20">
+                        <p class="text-[9px] font-black uppercase text-green-600 mb-2 tracking-widest">🧪 Conta de Teste</p>
+                        <p class="text-xs text-zinc-400">
+                            Email: <code class="text-green-500 font-mono">teste@splitstore.com</code>
+                        </p>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -140,6 +167,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <script src="https://cdn.jsdelivr.net/particles.js/2.0.0/particles.min.js"></script>
     <script>
         lucide.createIcons();
+        
         particlesJS("particles-js", {
             "particles": {
                 "number": { "value": 40, "density": { "enable": true, "value_area": 800 } },
