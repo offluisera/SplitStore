@@ -1,66 +1,109 @@
 <?php
 /**
- * ============================================
  * SPLITSTORE - GERENCIAMENTO DE PRODUTOS
- * ============================================
+ * Versão corrigida e testada
  */
 
-session_start();
-require_once '../includes/db.php';
+// Ativa display de erros apenas para debug (remover em produção)
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
 
-if (!isset($_SESSION['store_logged'])) {
+session_start();
+
+// Verifica conexão com banco
+$db_path = '../includes/db.php';
+if (!file_exists($db_path)) {
+    die("Erro: Arquivo de conexão não encontrado em: " . $db_path);
+}
+require_once $db_path;
+
+// Proteção de acesso
+if (!isset($_SESSION['store_logged']) || $_SESSION['store_logged'] !== true) {
     header('Location: login.php');
     exit;
 }
 
-$store_id = $_SESSION['store_id'];
-$store_name = $_SESSION['store_name'];
+$store_id = $_SESSION['store_id'] ?? 0;
+$store_name = $_SESSION['store_name'] ?? 'Minha Loja';
+$store_plan = $_SESSION['store_plan'] ?? 'basic';
+
+if ($store_id === 0) {
+    die("Erro: ID da loja não encontrado na sessão.");
+}
 
 $message = "";
 $messageType = "";
 
-// CRIAR/EDITAR PRODUTO
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+// BUSCAR PRODUTOS (sempre executar antes de qualquer ação)
+try {
+    $stmt = $pdo->prepare("
+        SELECT p.*,
+               (SELECT COUNT(*) FROM transactions WHERE product_id = p.id AND status = 'completed') as sales_count
+        FROM products p
+        WHERE p.store_id = ?
+        ORDER BY p.created_at DESC
+    ");
+    $stmt->execute([$store_id]);
+    $products = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+} catch (PDOException $e) {
+    error_log("Error fetching products: " . $e->getMessage());
+    $products = [];
+}
+
+// CRIAR PRODUTO
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'create') {
     $name = trim($_POST['name'] ?? '');
     $description = trim($_POST['description'] ?? '');
     $price = (float)($_POST['price'] ?? 0);
-    $category_id = (int)($_POST['category_id'] ?? 0);
     $commands = trim($_POST['commands'] ?? '');
-    $stock = $_POST['stock_type'] === 'unlimited' ? null : (int)($_POST['stock'] ?? 0);
+    $stock = isset($_POST['stock']) && $_POST['stock'] !== '' ? (int)$_POST['stock'] : null;
     $image_url = trim($_POST['image_url'] ?? '');
-    $status = 'active';
     
     if (!empty($name) && $price > 0) {
         try {
-            if ($_POST['action'] == 'create') {
-                $sql = "INSERT INTO products (store_id, category_id, name, description, price, commands, stock, image_url, status, created_at) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
-                $stmt = $pdo->prepare($sql);
-                
-                if ($stmt->execute([$store_id, $category_id, $name, $description, $price, $commands, $stock, $image_url, $status])) {
-                    $message = "Produto criado com sucesso!";
-                    $messageType = "success";
-                    header('Location: products.php?success=created');
-                    exit;
-                }
-            } elseif ($_POST['action'] == 'edit' && isset($_POST['product_id'])) {
-                $sql = "UPDATE products SET category_id=?, name=?, description=?, price=?, commands=?, stock=?, image_url=? WHERE id=? AND store_id=?";
-                $stmt = $pdo->prepare($sql);
-                
-                if ($stmt->execute([$category_id, $name, $description, $price, $commands, $stock, $image_url, $_POST['product_id'], $store_id])) {
-                    $message = "Produto atualizado!";
-                    $messageType = "success";
-                    header('Location: products.php?success=updated');
-                    exit;
-                }
+            $sql = "INSERT INTO products (store_id, name, description, price, commands, stock, image_url, status, created_at) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 'active', NOW())";
+            $stmt = $pdo->prepare($sql);
+            
+            if ($stmt->execute([$store_id, $name, $description, $price, $commands, $stock, $image_url])) {
+                header('Location: products.php?success=created');
+                exit;
             }
         } catch (PDOException $e) {
-            $message = "Erro: " . $e->getMessage();
+            $message = "Erro ao criar produto: " . $e->getMessage();
             $messageType = "error";
         }
     } else {
         $message = "Nome e preço são obrigatórios.";
         $messageType = "error";
+    }
+}
+
+// EDITAR PRODUTO
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'edit') {
+    $product_id = (int)($_POST['product_id'] ?? 0);
+    $name = trim($_POST['name'] ?? '');
+    $description = trim($_POST['description'] ?? '');
+    $price = (float)($_POST['price'] ?? 0);
+    $commands = trim($_POST['commands'] ?? '');
+    $stock = isset($_POST['stock']) && $_POST['stock'] !== '' ? (int)$_POST['stock'] : null;
+    $image_url = trim($_POST['image_url'] ?? '');
+    
+    if ($product_id > 0 && !empty($name) && $price > 0) {
+        try {
+            $sql = "UPDATE products 
+                    SET name=?, description=?, price=?, commands=?, stock=?, image_url=? 
+                    WHERE id=? AND store_id=?";
+            $stmt = $pdo->prepare($sql);
+            
+            if ($stmt->execute([$name, $description, $price, $commands, $stock, $image_url, $product_id, $store_id])) {
+                header('Location: products.php?success=updated');
+                exit;
+            }
+        } catch (PDOException $e) {
+            $message = "Erro ao atualizar: " . $e->getMessage();
+            $messageType = "error";
+        }
     }
 }
 
@@ -79,17 +122,22 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
 
 // TOGGLE STATUS
 if (isset($_GET['toggle']) && is_numeric($_GET['toggle'])) {
-    $id = $_GET['toggle'];
+    $id = (int)$_GET['toggle'];
     $current = $_GET['current'] ?? 'active';
-    $newStatus = ($current == 'active') ? 'inactive' : 'active';
+    $newStatus = ($current === 'active') ? 'inactive' : 'active';
     
-    $stmt = $pdo->prepare("UPDATE products SET status = ? WHERE id = ? AND store_id = ?");
-    $stmt->execute([$newStatus, $id, $store_id]);
-    header('Location: products.php?success=status_updated');
-    exit;
+    try {
+        $stmt = $pdo->prepare("UPDATE products SET status = ? WHERE id = ? AND store_id = ?");
+        $stmt->execute([$newStatus, $id, $store_id]);
+        header('Location: products.php?success=status_updated');
+        exit;
+    } catch (PDOException $e) {
+        $message = "Erro ao alterar status: " . $e->getMessage();
+        $messageType = "error";
+    }
 }
 
-// MENSAGENS
+// MENSAGENS DE SUCESSO
 if (isset($_GET['success'])) {
     $messages = [
         'created' => 'Produto criado com sucesso!',
@@ -101,35 +149,27 @@ if (isset($_GET['success'])) {
     $messageType = "success";
 }
 
-// BUSCAR PRODUTOS
-$stmt = $pdo->prepare("
-    SELECT p.*, c.name as category_name,
-           (SELECT COUNT(*) FROM transactions WHERE product_id = p.id AND status = 'completed') as sales_count
-    FROM products p
-    LEFT JOIN categories c ON p.category_id = c.id
-    WHERE p.store_id = ?
-    ORDER BY p.created_at DESC
-");
-$stmt->execute([$store_id]);
-$products = $stmt->fetchAll();
-
-// BUSCAR CATEGORIAS
-$stmt = $pdo->prepare("SELECT * FROM categories WHERE store_id = ? ORDER BY name ASC");
-$stmt->execute([$store_id]);
-$categories = $stmt->fetchAll();
-
-// EDIÇÃO
+// PRODUTO EM EDIÇÃO
 $editingProduct = null;
 if (isset($_GET['edit']) && is_numeric($_GET['edit'])) {
-    $stmt = $pdo->prepare("SELECT * FROM products WHERE id = ? AND store_id = ?");
-    $stmt->execute([$_GET['edit'], $store_id]);
-    $editingProduct = $stmt->fetch();
+    try {
+        $stmt = $pdo->prepare("SELECT * FROM products WHERE id = ? AND store_id = ?");
+        $stmt->execute([$_GET['edit'], $store_id]);
+        $editingProduct = $stmt->fetch(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("Error fetching product: " . $e->getMessage());
+    }
 }
+
+// Conta produtos ativos
+$activeCount = count(array_filter($products, fn($p) => $p['status'] === 'active'));
+$totalSales = array_sum(array_column($products, 'sales_count'));
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Produtos | <?= htmlspecialchars($store_name) ?></title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -137,7 +177,6 @@ if (isset($_GET['edit']) && is_numeric($_GET['edit'])) {
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #050505; color: white; }
         .glass { background: rgba(255, 255, 255, 0.02); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); }
-        .sidebar-item:hover { background: rgba(220, 38, 38, 0.05); color: #dc2626; }
     </style>
 </head>
 <body class="flex min-h-screen">
@@ -157,29 +196,25 @@ if (isset($_GET['edit']) && is_numeric($_GET['edit'])) {
         </header>
 
         <?php if($message): ?>
-            <div class="glass border-<?= $messageType == 'success' ? 'green' : 'red' ?>-600/20 text-<?= $messageType == 'success' ? 'green' : 'red' ?>-500 p-4 rounded-2xl mb-8 text-xs font-bold flex items-center gap-3">
-                <i data-lucide="<?= $messageType == 'success' ? 'check-circle' : 'alert-circle' ?>" class="w-5 h-5"></i>
-                <?= $message ?>
+            <div class="glass border-<?= $messageType === 'success' ? 'green' : 'red' ?>-600/20 text-<?= $messageType === 'success' ? 'green' : 'red' ?>-500 p-4 rounded-2xl mb-8 text-xs font-bold flex items-center gap-3">
+                <i data-lucide="<?= $messageType === 'success' ? 'check-circle' : 'alert-circle' ?>" class="w-5 h-5"></i>
+                <?= htmlspecialchars($message) ?>
             </div>
         <?php endif; ?>
 
         <!-- Stats -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div class="glass p-6 rounded-2xl">
                 <p class="text-zinc-600 text-[10px] font-black uppercase tracking-widest mb-2">Total de Produtos</p>
                 <h3 class="text-3xl font-black"><?= count($products) ?></h3>
             </div>
             <div class="glass p-6 rounded-2xl">
                 <p class="text-zinc-600 text-[10px] font-black uppercase tracking-widest mb-2">Ativos</p>
-                <h3 class="text-3xl font-black text-green-500"><?= count(array_filter($products, fn($p) => $p['status'] == 'active')) ?></h3>
-            </div>
-            <div class="glass p-6 rounded-2xl">
-                <p class="text-zinc-600 text-[10px] font-black uppercase tracking-widest mb-2">Categorias</p>
-                <h3 class="text-3xl font-black text-purple-500"><?= count($categories) ?></h3>
+                <h3 class="text-3xl font-black text-green-500"><?= $activeCount ?></h3>
             </div>
             <div class="glass p-6 rounded-2xl">
                 <p class="text-zinc-600 text-[10px] font-black uppercase tracking-widest mb-2">Total Vendido</p>
-                <h3 class="text-3xl font-black text-red-500"><?= array_sum(array_column($products, 'sales_count')) ?></h3>
+                <h3 class="text-3xl font-black text-red-500"><?= $totalSales ?></h3>
             </div>
         </div>
 
@@ -209,14 +244,8 @@ if (isset($_GET['edit']) && is_numeric($_GET['edit'])) {
                         <div class="flex-1">
                             <div class="flex items-start justify-between mb-2">
                                 <h3 class="font-black text-sm uppercase italic line-clamp-1"><?= htmlspecialchars($product['name']) ?></h3>
-                                <span class="w-2 h-2 rounded-full flex-shrink-0 ml-2 mt-1 <?= $product['status'] == 'active' ? 'bg-green-500' : 'bg-zinc-700' ?>"></span>
+                                <span class="w-2 h-2 rounded-full flex-shrink-0 ml-2 mt-1 <?= $product['status'] === 'active' ? 'bg-green-500' : 'bg-zinc-700' ?>"></span>
                             </div>
-                            
-                            <?php if ($product['category_name']): ?>
-                                <span class="text-[9px] font-bold uppercase text-zinc-600 bg-white/5 px-2 py-1 rounded">
-                                    <?= htmlspecialchars($product['category_name']) ?>
-                                </span>
-                            <?php endif; ?>
 
                             <p class="text-zinc-500 text-xs mt-3 line-clamp-2 leading-relaxed">
                                 <?= htmlspecialchars($product['description']) ?>
@@ -231,7 +260,7 @@ if (isset($_GET['edit']) && is_numeric($_GET['edit'])) {
                                     <?php if ($product['stock'] !== null): ?>
                                         <div class="text-right">
                                             <p class="text-xs font-black"><?= $product['stock'] ?></p>
-                                            <p class="text-[9px] text-zinc-600">em estoque</p>
+                                            <p class="text-[9px] text-zinc-600">estoque</p>
                                         </div>
                                     <?php else: ?>
                                         <span class="text-[9px] font-black uppercase text-green-600">Ilimitado</span>
@@ -248,10 +277,10 @@ if (isset($_GET['edit']) && is_numeric($_GET['edit'])) {
                             </a>
                             <a href="?toggle=<?= $product['id'] ?>&current=<?= $product['status'] ?>" 
                                class="bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white text-[10px] font-black uppercase py-2 rounded-xl text-center transition">
-                                <?= $product['status'] == 'active' ? 'Ocultar' : 'Ativar' ?>
+                                <?= $product['status'] === 'active' ? 'Ocultar' : 'Ativar' ?>
                             </a>
                             <a href="?delete=<?= $product['id'] ?>" 
-                               onclick="return confirm('Tem certeza?')"
+                               onclick="return confirm('Tem certeza que deseja deletar este produto?')"
                                class="bg-red-900/20 hover:bg-red-900/30 text-red-500 text-[10px] font-black uppercase py-2 rounded-xl text-center transition">
                                 Deletar
                             </a>
@@ -280,13 +309,11 @@ if (isset($_GET['edit']) && is_numeric($_GET['edit'])) {
                     <input type="hidden" name="product_id" value="<?= $editingProduct['id'] ?>">
                 <?php endif; ?>
                 
-                <div class="grid grid-cols-2 gap-4">
-                    <div class="col-span-2 space-y-1">
-                        <label class="text-[9px] font-black uppercase text-zinc-600 ml-2 tracking-widest">Nome do Produto</label>
-                        <input type="text" name="name" placeholder="VIP Diamante" required 
-                               value="<?= $editingProduct ? htmlspecialchars($editingProduct['name']) : '' ?>"
-                               class="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-sm outline-none focus:border-red-600 transition">
-                    </div>
+                <div class="space-y-1">
+                    <label class="text-[9px] font-black uppercase text-zinc-600 ml-2 tracking-widest">Nome do Produto</label>
+                    <input type="text" name="name" placeholder="VIP Diamante" required 
+                           value="<?= $editingProduct ? htmlspecialchars($editingProduct['name']) : '' ?>"
+                           class="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-sm outline-none focus:border-red-600 transition">
                 </div>
 
                 <div class="space-y-1">
@@ -303,15 +330,10 @@ if (isset($_GET['edit']) && is_numeric($_GET['edit'])) {
                                class="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-sm outline-none focus:border-red-600 transition">
                     </div>
                     <div class="space-y-1">
-                        <label class="text-[9px] font-black uppercase text-zinc-600 ml-2 tracking-widest">Categoria</label>
-                        <select name="category_id" class="w-full bg-zinc-900 border border-white/10 p-4 rounded-xl text-sm outline-none focus:border-red-600 transition appearance-none">
-                            <option value="0">Sem categoria</option>
-                            <?php foreach($categories as $cat): ?>
-                                <option value="<?= $cat['id'] ?>" <?= ($editingProduct && $editingProduct['category_id'] == $cat['id']) ? 'selected' : '' ?>>
-                                    <?= htmlspecialchars($cat['name']) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
+                        <label class="text-[9px] font-black uppercase text-zinc-600 ml-2 tracking-widest">Estoque (vazio = ilimitado)</label>
+                        <input type="number" name="stock" min="0" placeholder="Ilimitado" 
+                               value="<?= $editingProduct && $editingProduct['stock'] !== null ? $editingProduct['stock'] : '' ?>"
+                               class="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-sm outline-none focus:border-red-600 transition">
                     </div>
                 </div>
 
@@ -322,25 +344,9 @@ if (isset($_GET['edit']) && is_numeric($_GET['edit'])) {
                     <p class="text-[8px] text-zinc-700 ml-2">Use {player} para o nome do jogador</p>
                 </div>
 
-                <div class="grid grid-cols-2 gap-4">
-                    <div class="space-y-1">
-                        <label class="text-[9px] font-black uppercase text-zinc-600 ml-2 tracking-widest">Tipo de Estoque</label>
-                        <select name="stock_type" id="stockType" onchange="toggleStock()" class="w-full bg-zinc-900 border border-white/10 p-4 rounded-xl text-sm outline-none focus:border-red-600 transition appearance-none">
-                            <option value="unlimited">Ilimitado</option>
-                            <option value="limited">Limitado</option>
-                        </select>
-                    </div>
-                    <div class="space-y-1" id="stockField" style="display: none;">
-                        <label class="text-[9px] font-black uppercase text-zinc-600 ml-2 tracking-widest">Quantidade</label>
-                        <input type="number" name="stock" min="0" placeholder="100" 
-                               value="<?= $editingProduct && $editingProduct['stock'] !== null ? $editingProduct['stock'] : '' ?>"
-                               class="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-sm outline-none focus:border-red-600 transition">
-                    </div>
-                </div>
-
                 <div class="space-y-1">
                     <label class="text-[9px] font-black uppercase text-zinc-600 ml-2 tracking-widest">URL da Imagem</label>
-                    <input type="url" name="image_url" placeholder="https://..." 
+                    <input type="url" name="image_url" placeholder="https://i.imgur.com/..." 
                            value="<?= $editingProduct ? htmlspecialchars($editingProduct['image_url']) : '' ?>"
                            class="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-sm outline-none focus:border-red-600 transition">
                 </div>
@@ -369,25 +375,14 @@ if (isset($_GET['edit']) && is_numeric($_GET['edit'])) {
         }
         
         function closeModal() {
-            const modal = document.getElementById('modalProduct');
-            modal.classList.add('hidden');
+            document.getElementById('modalProduct').classList.add('hidden');
             if (window.location.search.includes('edit=')) {
                 window.location.href = 'products.php';
             }
         }
         
-        function toggleStock() {
-            const type = document.getElementById('stockType').value;
-            const field = document.getElementById('stockField');
-            field.style.display = type === 'limited' ? 'block' : 'none';
-        }
-        
         <?php if($editingProduct): ?>
             openModal();
-            <?php if($editingProduct['stock'] !== null): ?>
-                document.getElementById('stockType').value = 'limited';
-                toggleStock();
-            <?php endif; ?>
         <?php endif; ?>
     </script>
 </body>

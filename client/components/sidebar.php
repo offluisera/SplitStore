@@ -1,7 +1,7 @@
 <?php
 /**
  * SIDEBAR DO PAINEL DO CLIENTE
- * Componente reutilizável
+ * Componente reutilizável - VERSÃO COMPLETA
  */
 
 // Verifica se as variáveis da sessão existem
@@ -12,22 +12,25 @@ $store_id = $_SESSION['store_id'] ?? 0;
 // Identifica a página atual
 $current_page = basename($_SERVER['PHP_SELF']);
 
-// Busca métricas rápidas para a sidebar (com cache)
+// Busca métricas APENAS DA LOJA DO USUÁRIO LOGADO
 $quick_stats = ['vendas_mes' => 0];
 if (isset($pdo) && $store_id > 0) {
     try {
+        // IMPORTANTE: Filtra por store_id para mostrar apenas receita da loja do usuário
         $stmt = $pdo->prepare("
             SELECT COALESCE(SUM(amount), 0) as total
             FROM transactions 
             WHERE store_id = ? 
             AND status = 'completed'
             AND MONTH(paid_at) = MONTH(CURRENT_DATE())
+            AND YEAR(paid_at) = YEAR(CURRENT_DATE())
         ");
         $stmt->execute([$store_id]);
         $result = $stmt->fetch();
         $quick_stats['vendas_mes'] = (float)($result['total'] ?? 0);
     } catch (PDOException $e) {
         error_log("Sidebar Stats Error: " . $e->getMessage());
+        $quick_stats['vendas_mes'] = 0;
     }
 }
 
@@ -57,17 +60,18 @@ function formatMoneyShort($value) {
             </div>
         </div>
         
-        <!-- Quick Stats -->
+        <!-- Quick Stats - RECEITA APENAS DA LOJA DO USUÁRIO -->
         <div class="glass rounded-xl p-4 border-white/5">
             <div class="flex items-center justify-between mb-2">
                 <span class="text-[9px] font-black uppercase text-zinc-600">Este Mês</span>
                 <span class="text-xs font-black text-green-500">↑</span>
             </div>
             <p class="text-xl font-black italic"><?= formatMoneyShort($quick_stats['vendas_mes']) ?></p>
+            <p class="text-[8px] text-zinc-700 mt-1">Receita da sua loja</p>
         </div>
     </div>
 
-    <!-- Menu -->
+    <!-- Menu Completo -->
     <nav class="flex-1 px-6 space-y-2 overflow-y-auto">
         <a href="dashboard.php" class="flex items-center gap-4 p-4 rounded-2xl text-xs font-black uppercase tracking-widest <?= $current_page == 'dashboard.php' ? 'bg-red-600/10 text-red-600 border border-red-600/20' : 'text-zinc-500 hover:bg-red-600/5 hover:text-red-600 transition' ?>">
             <i data-lucide="layout-dashboard" class="w-4 h-4"></i> Overview
@@ -77,12 +81,8 @@ function formatMoneyShort($value) {
             <i data-lucide="package" class="w-4 h-4"></i> Produtos
         </a>
         
-        <a href="orders.php" class="flex items-center gap-4 p-4 rounded-2xl text-xs font-black uppercase tracking-widest <?= $current_page == 'orders.php' ? 'bg-red-600/10 text-red-600 border border-red-600/20' : 'text-zinc-500 hover:bg-red-600/5 hover:text-red-600 transition' ?>">
+        <a href="gerenciar_pedidos.php" class="flex items-center gap-4 p-4 rounded-2xl text-xs font-black uppercase tracking-widest <?= $current_page == 'gerenciar_pedidos.php' ? 'bg-red-600/10 text-red-600 border border-red-600/20' : 'text-zinc-500 hover:bg-red-600/5 hover:text-red-600 transition' ?>">
             <i data-lucide="shopping-cart" class="w-4 h-4"></i> Pedidos
-        </a>
-        
-        <a href="customers.php" class="flex items-center gap-4 p-4 rounded-2xl text-xs font-black uppercase tracking-widest <?= $current_page == 'customers.php' ? 'bg-red-600/10 text-red-600 border border-red-600/20' : 'text-zinc-500 hover:bg-red-600/5 hover:text-red-600 transition' ?>">
-            <i data-lucide="users" class="w-4 h-4"></i> Clientes
         </a>
         
         <div class="h-px bg-white/5 my-4"></div>
