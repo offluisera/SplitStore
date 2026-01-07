@@ -1,91 +1,68 @@
 <?php
 /**
  * ============================================
- * SPLITSTORE - PROCESSAR CHECKOUT V3.1
+ * SPLITSTORE - PROCESSAR CHECKOUT (CORRIGIDO)
  * ============================================
- * Versão com debug e tratamento robusto de erros
+ * Fluxo: Seus Dados → Configuração → Pagamento
+ * Versão: 2.0 - Com logs detalhados
  */
 
 session_start();
-
-// Ativar logs de erro temporariamente
 ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
-// Log de debug
-function debugLog($message, $data = null) {
-    $logFile = __DIR__ . '/logs/checkout_debug.log';
-    $logDir = dirname($logFile);
-    
+// Função de log para debug
+function logCheckout($message, $data = null) {
+    $logDir = __DIR__ . '/logs';
     if (!is_dir($logDir)) {
         @mkdir($logDir, 0755, true);
     }
     
+    $logFile = $logDir . '/checkout_debug.log';
     $timestamp = date('Y-m-d H:i:s');
     $logMessage = "[$timestamp] $message";
     
     if ($data !== null) {
-        $logMessage .= ": " . json_encode($data);
+        $logMessage .= "\n" . print_r($data, true);
     }
     
-    $logMessage .= PHP_EOL;
+    $logMessage .= "\n" . str_repeat('-', 80) . "\n";
     
     @file_put_contents($logFile, $logMessage, FILE_APPEND);
 }
 
-debugLog("=== INÍCIO DO PROCESSAMENTO ===");
+logCheckout("🚀 INÍCIO DO PROCESSO DE CHECKOUT");
 
-// Apenas requisições POST
+// Só aceita POST
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    debugLog("Método inválido", ['method' => $_SERVER['REQUEST_METHOD']]);
+    logCheckout("❌ Método não permitido: " . $_SERVER['REQUEST_METHOD']);
     header('Location: index.php');
     exit;
 }
 
-debugLog("Método POST confirmado");
+require_once 'includes/db.php';
 
-// Conectar banco de dados
-try {
-    require_once 'includes/db.php';
-    debugLog("Conexão com banco OK");
-} catch (Exception $e) {
-    debugLog("ERRO ao conectar banco", ['error' => $e->getMessage()]);
-    $_SESSION['checkout_errors'] = ["Erro de conexão com banco de dados. Tente novamente."];
-    $_SESSION['checkout_data'] = $_POST;
-    header('Location: checkout.php?plan=' . urlencode($_POST['plan'] ?? 'basic'));
-    exit;
-}
+logCheckout("✓ Banco de dados conectado");
 
 // ========================================
-// 1. CAPTURAR E VALIDAR DADOS
+// 1. CAPTURAR DADOS DO FORMULÁRIO
 // ========================================
 
 $errors = [];
 $old_data = [];
 
-// Dados Pessoais
+// ETAPA 1: Dados Pessoais
 $first_name = trim($_POST['first_name'] ?? '');
 $last_name = trim($_POST['last_name'] ?? '');
 $email = trim($_POST['email'] ?? '');
 $cpf = preg_replace('/[^0-9]/', '', $_POST['cpf'] ?? '');
 $phone = preg_replace('/[^0-9]/', '', $_POST['phone'] ?? '');
+$password = $_POST['password'] ?? '';
 
-debugLog("Dados recebidos", [
-    'first_name' => $first_name,
-    'last_name' => $last_name,
-    'email' => $email,
-    'cpf' => substr($cpf, 0, 3) . '***',
-    'phone' => substr($phone, 0, 3) . '***'
-]);
-
-// Dados da Loja
+// ETAPA 2: Configuração da Loja
 $store_name = trim($_POST['store_name'] ?? '');
 $store_slug = strtolower(preg_replace('/[^a-z0-9-]/', '', $_POST['store_slug'] ?? ''));
-
-// Senha
-$password = $_POST['password'] ?? '';
-$password_confirm = $_POST['password_confirm'] ?? '';
+$payment_method = $_POST['payment_method'] ?? 'pix';
 
 // Plano e Ciclo
 $plan = $_POST['plan'] ?? 'basic';
@@ -94,115 +71,130 @@ $billing_cycle = $_POST['billing_cycle'] ?? 'monthly';
 // Termos
 $terms = isset($_POST['terms']);
 
-// Salva dados para repopular
+// Salva para repopular em caso de erro
 $old_data = compact('first_name', 'last_name', 'email', 'cpf', 'phone', 'store_name', 'store_slug');
+
+logCheckout("📝 Dados recebidos do formulário", [
+    'first_name' => $first_name,
+    'last_name' => $last_name,
+    'email' => $email,
+    'cpf_length' => strlen($cpf),
+    'phone_length' => strlen($phone),
+    'store_name' => $store_name,
+    'store_slug' => $store_slug,
+    'plan' => $plan,
+    'billing_cycle' => $billing_cycle,
+    'payment_method' => $payment_method,
+    'terms_accepted' => $terms ? 'SIM' : 'NÃO'
+]);
 
 // ========================================
 // 2. VALIDAÇÕES
 // ========================================
 
-debugLog("Iniciando validações");
+logCheckout("🔍 Iniciando validações...");
 
+// Validar campos obrigatórios
 if (empty($first_name)) {
     $errors[] = "Nome é obrigatório";
-    debugLog("Erro: Nome vazio");
+    logCheckout("❌ Nome vazio");
 }
 
 if (empty($last_name)) {
     $errors[] = "Sobrenome é obrigatório";
-    debugLog("Erro: Sobrenome vazio");
+    logCheckout("❌ Sobrenome vazio");
 }
 
 // Validar e-mail
-$email = filter_var($email, FILTER_VALIDATE_EMAIL);
-if (!$email) {
+$email_validated = filter_var($email, FILTER_VALIDATE_EMAIL);
+if (!$email_validated) {
     $errors[] = "E-mail inválido";
-    debugLog("Erro: E-mail inválido", ['email_input' => $_POST['email'] ?? '']);
+    logCheckout("❌ E-mail inválido: " . $email);
+} else {
+    $email = $email_validated;
 }
 
+// Validar CPF
 if (strlen($cpf) !== 11) {
     $errors[] = "CPF inválido (deve ter 11 dígitos)";
-    debugLog("Erro: CPF inválido", ['length' => strlen($cpf)]);
+    logCheckout("❌ CPF inválido. Comprimento: " . strlen($cpf));
 }
 
+// Validar telefone
 if (strlen($phone) < 10) {
     $errors[] = "Telefone inválido (mínimo 10 dígitos)";
-    debugLog("Erro: Telefone inválido", ['length' => strlen($phone)]);
+    logCheckout("❌ Telefone inválido. Comprimento: " . strlen($phone));
 }
 
+// Validar loja
 if (empty($store_name)) {
     $errors[] = "Nome da loja é obrigatório";
-    debugLog("Erro: Nome da loja vazio");
+    logCheckout("❌ Nome da loja vazio");
 }
 
-if (empty($store_slug)) {
-    $errors[] = "URL da loja é obrigatória";
-    debugLog("Erro: Slug vazio");
-} elseif (strlen($store_slug) < 3) {
+if (empty($store_slug) || strlen($store_slug) < 3) {
     $errors[] = "URL da loja deve ter no mínimo 3 caracteres";
-    debugLog("Erro: Slug muito curto", ['length' => strlen($store_slug)]);
+    logCheckout("❌ Store slug inválido: " . $store_slug);
 }
 
+// Validar senha
 if (strlen($password) < 8) {
     $errors[] = "Senha deve ter no mínimo 8 caracteres";
-    debugLog("Erro: Senha curta", ['length' => strlen($password)]);
+    logCheckout("❌ Senha muito curta. Comprimento: " . strlen($password));
 }
 
-if ($password !== $password_confirm) {
-    $errors[] = "As senhas não coincidem";
-    debugLog("Erro: Senhas não coincidem");
-}
-
+// Validar termos
 if (!$terms) {
     $errors[] = "Você deve aceitar os termos de serviço";
-    debugLog("Erro: Termos não aceitos");
+    logCheckout("❌ Termos não aceitos");
 }
 
-debugLog("Validações concluídas", ['total_errors' => count($errors)]);
-
-// Verifica se e-mail já existe
+// Verificar e-mail duplicado
 if (empty($errors) && $email) {
     try {
         $stmt = $pdo->prepare("SELECT id FROM stores WHERE email = ?");
         $stmt->execute([$email]);
         if ($stmt->fetch()) {
             $errors[] = "Este e-mail já está cadastrado";
-            debugLog("Erro: E-mail duplicado", ['email' => $email]);
+            logCheckout("❌ E-mail duplicado: " . $email);
         }
     } catch (PDOException $e) {
-        debugLog("Erro ao verificar e-mail", ['error' => $e->getMessage()]);
+        error_log("Error checking email: " . $e->getMessage());
+        logCheckout("❌ Erro ao verificar e-mail", ['error' => $e->getMessage()]);
         $errors[] = "Erro ao verificar e-mail. Tente novamente.";
     }
 }
 
-// Verifica se slug já existe
+// Verificar slug duplicado
 if (empty($errors) && $store_slug) {
     try {
         $stmt = $pdo->prepare("SELECT id FROM stores WHERE store_slug = ?");
         $stmt->execute([$store_slug]);
         if ($stmt->fetch()) {
-            $errors[] = "Esta URL de loja já está em uso. Tente: " . $store_slug . "-" . rand(100, 999);
-            debugLog("Erro: Slug duplicado", ['slug' => $store_slug]);
+            $suggested_slug = $store_slug . "-" . rand(100, 999);
+            $errors[] = "Esta URL de loja já está em uso. Tente: " . $suggested_slug;
+            logCheckout("❌ Store slug duplicado: " . $store_slug);
         }
     } catch (PDOException $e) {
-        debugLog("Erro ao verificar slug", ['error' => $e->getMessage()]);
-        $errors[] = "Erro ao verificar URL da loja. Tente novamente.";
+        error_log("Error checking slug: " . $e->getMessage());
+        logCheckout("❌ Erro ao verificar slug", ['error' => $e->getMessage()]);
+        $errors[] = "Erro ao verificar URL. Tente novamente.";
     }
 }
 
-// Se houver erros, volta pro checkout
+// Se houver erros, volta para o checkout
 if (!empty($errors)) {
-    debugLog("Retornando ao checkout com erros", ['errors' => $errors]);
+    logCheckout("❌ Validação falhou. Total de erros: " . count($errors), $errors);
     $_SESSION['checkout_errors'] = $errors;
     $_SESSION['checkout_data'] = $old_data;
     header('Location: checkout.php?plan=' . urlencode($plan));
     exit;
 }
 
-debugLog("Todas as validações passaram");
+logCheckout("✓ Todas as validações passaram");
 
 // ========================================
-// 3. DEFINIR VALORES DO PLANO
+// 3. CONFIGURAÇÃO DO PLANO
 // ========================================
 
 $plans_config = [
@@ -224,7 +216,7 @@ $plans_config = [
 ];
 
 if (!isset($plans_config[$plan])) {
-    debugLog("Plano inválido", ['plan' => $plan]);
+    logCheckout("❌ Plano inválido: " . $plan);
     header('Location: index.php');
     exit;
 }
@@ -232,9 +224,10 @@ if (!isset($plans_config[$plan])) {
 $plan_config = $plans_config[$plan];
 $amount = $billing_cycle === 'annual' ? $plan_config['price_annual'] : $plan_config['price_monthly'];
 
-debugLog("Plano selecionado", [
+logCheckout("💰 Plano selecionado", [
     'plan' => $plan,
-    'cycle' => $billing_cycle,
+    'name' => $plan_config['name'],
+    'billing_cycle' => $billing_cycle,
     'amount' => $amount
 ]);
 
@@ -253,22 +246,26 @@ function generateApiSecret() {
 $api_key = generateApiKey();
 $api_secret = generateApiSecret();
 
-debugLog("Credenciais geradas", [
-    'api_key' => substr($api_key, 0, 10) . '...',
-    'api_secret' => substr($api_secret, 0, 10) . '...'
+logCheckout("🔑 Credenciais geradas", [
+    'api_key' => $api_key,
+    'api_secret_preview' => substr($api_secret, 0, 20) . '...'
 ]);
 
 // ========================================
-// 5. CRIAR LOJA E TRANSAÇÃO
+// 5. CRIAR LOJA NO BANCO
 // ========================================
 
+logCheckout("💾 Iniciando inserção no banco de dados...");
+
 try {
-    debugLog("Iniciando transação no banco");
     $pdo->beginTransaction();
+    
+    logCheckout("✓ Transação iniciada");
     
     // Hash da senha
     $password_hash = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
-    debugLog("Senha hasheada");
+    
+    logCheckout("✓ Senha hasheada");
     
     // Insere a loja
     $stmt = $pdo->prepare("
@@ -291,7 +288,7 @@ try {
     
     $full_name = $first_name . ' ' . $last_name;
     
-    $result = $stmt->execute([
+    $insertData = [
         $store_name,
         $store_slug,
         $full_name,
@@ -303,14 +300,21 @@ try {
         $billing_cycle,
         $api_key,
         $api_secret
+    ];
+    
+    logCheckout("📤 Executando INSERT na tabela stores", [
+        'store_name' => $store_name,
+        'store_slug' => $store_slug,
+        'owner_name' => $full_name,
+        'email' => $email,
+        'plan' => $plan
     ]);
     
-    if (!$result) {
-        throw new Exception("Falha ao inserir loja no banco");
-    }
+    $stmt->execute($insertData);
     
     $store_id = $pdo->lastInsertId();
-    debugLog("Loja criada com sucesso", ['store_id' => $store_id]);
+    
+    logCheckout("✓ Loja inserida com sucesso. ID: " . $store_id);
     
     // Cria transação
     $stmt = $pdo->prepare("
@@ -320,43 +324,38 @@ try {
             payment_method,
             status,
             created_at
-        ) VALUES (?, ?, 'pix', 'pending', NOW())
+        ) VALUES (?, ?, ?, 'pending', NOW())
     ");
     
-    $result = $stmt->execute([$store_id, $amount]);
+    logCheckout("📤 Executando INSERT na tabela transactions");
     
-    if (!$result) {
-        throw new Exception("Falha ao criar transação");
-    }
-    
+    $stmt->execute([$store_id, $amount, $payment_method]);
     $transaction_id = $pdo->lastInsertId();
-    debugLog("Transação criada", ['transaction_id' => $transaction_id]);
+    
+    logCheckout("✓ Transação criada. ID: " . $transaction_id);
     
     // ========================================
-    // 6. GERAR QR CODE PIX (SIMULADO)
+    // 6. GERAR QR CODE PIX
     // ========================================
     
-    debugLog("Gerando QR Code PIX");
+    logCheckout("🔲 Gerando QR Code PIX...");
     
-    // Código PIX simulado
+    // Código PIX simulado (substituir por integração real)
     $qr_code_text = "00020126580014br.gov.bcb.pix0136" . 
                     str_replace('-', '', $api_key) . 
                     "520400005303986540" . 
                     str_pad(number_format($amount, 2, '', ''), 10, '0', STR_PAD_LEFT) . 
                     "5802BR5925SPLITSTORE6009SAOPAULO62070503***6304";
     
-    // QR Code Image via serviço público
+    // QR Code Image
     $qr_code_image = "https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=" . urlencode($qr_code_text);
     
     // Validade: 30 minutos
     $expires_at = date('Y-m-d H:i:s', strtotime('+30 minutes'));
     
-    debugLog("QR Code gerado", [
-        'expires_at' => $expires_at,
-        'code_length' => strlen($qr_code_text)
-    ]);
-    
     // Atualiza transação com dados do PIX
+    $gateway_id = 'SPLIT_' . time() . '_' . $transaction_id;
+    
     $stmt = $pdo->prepare("
         UPDATE transactions 
         SET gateway_transaction_id = ?,
@@ -366,9 +365,9 @@ try {
         WHERE id = ?
     ");
     
-    $gateway_id = 'TEST_' . uniqid() . '_' . $transaction_id;
+    logCheckout("📤 Atualizando transação com dados do PIX");
     
-    $result = $stmt->execute([
+    $stmt->execute([
         $gateway_id, 
         $qr_code_image, 
         $qr_code_text, 
@@ -376,14 +375,11 @@ try {
         $transaction_id
     ]);
     
-    if (!$result) {
-        throw new Exception("Falha ao atualizar transação com dados do PIX");
-    }
-    
-    debugLog("Transação atualizada com PIX", ['gateway_id' => $gateway_id]);
+    logCheckout("✓ Transação atualizada com QR Code");
     
     $pdo->commit();
-    debugLog("Transação do banco commitada com sucesso");
+    
+    logCheckout("✓ Transação do banco COMMITADA com sucesso");
     
     // ========================================
     // 7. SALVAR NA SESSÃO
@@ -392,9 +388,9 @@ try {
     $_SESSION['store_data'] = [
         'id' => $store_id,
         'name' => $store_name,
+        'slug' => $store_slug,
         'email' => $email,
         'plan' => $plan_config['name'],
-        'transaction_id' => $transaction_id,
         'api_key' => $api_key,
         'api_secret' => $api_secret
     ];
@@ -408,72 +404,61 @@ try {
         'gateway_id' => $gateway_id
     ];
     
-    debugLog("Dados salvos na sessão");
+    logCheckout("✓ Dados salvos na sessão", [
+        'store_id' => $store_id,
+        'transaction_id' => $transaction_id,
+        'amount' => $amount
+    ]);
     
-    // Log de sucesso no banco de atividades
-    try {
-        $stmt = $pdo->prepare("
-            INSERT INTO activity_logs (store_id, action, description, created_at)
-            VALUES (?, 'checkout_completed', ?, NOW())
-        ");
-        $stmt->execute([
-            $store_id,
-            "Checkout concluído para o plano {$plan_config['name']} - R$ " . number_format($amount, 2, ',', '.')
-        ]);
-    } catch (Exception $e) {
-        debugLog("Erro ao salvar log de atividade (não crítico)", ['error' => $e->getMessage()]);
-    }
-    
-    debugLog("=== PROCESSAMENTO CONCLUÍDO COM SUCESSO ===");
-    
-    // Limpa erros anteriores
+    // Limpa erros
     unset($_SESSION['checkout_errors'], $_SESSION['checkout_data']);
+    
+    logCheckout("🎉 PROCESSO CONCLUÍDO COM SUCESSO!");
+    logCheckout("🔄 Redirecionando para: payment.php");
     
     // Redireciona para página de pagamento
     header('Location: payment.php');
     exit;
     
 } catch (PDOException $e) {
-    if (isset($pdo) && $pdo->inTransaction()) {
+    if ($pdo->inTransaction()) {
         $pdo->rollBack();
-        debugLog("Rollback executado");
+        logCheckout("⚠️ Transação revertida (ROLLBACK)");
     }
     
-    debugLog("ERRO PDO", [
+    $errorDetails = [
         'message' => $e->getMessage(),
         'code' => $e->getCode(),
         'file' => $e->getFile(),
         'line' => $e->getLine()
-    ]);
+    ];
     
-    error_log("Checkout PDO Error: " . $e->getMessage());
+    error_log("Checkout Error: " . $e->getMessage());
+    logCheckout("❌ ERRO FATAL NO BANCO DE DADOS", $errorDetails);
     
     $_SESSION['checkout_errors'] = [
         "Erro ao processar pedido. Tente novamente.",
-        "Detalhes técnicos: " . $e->getMessage()
+        "Código: " . $e->getCode()
     ];
     $_SESSION['checkout_data'] = $old_data;
     
+    logCheckout("🔄 Redirecionando de volta para checkout.php com erros");
+    
     header('Location: checkout.php?plan=' . urlencode($plan));
     exit;
-    
 } catch (Exception $e) {
-    if (isset($pdo) && $pdo->inTransaction()) {
+    if ($pdo->inTransaction()) {
         $pdo->rollBack();
-        debugLog("Rollback executado");
+        logCheckout("⚠️ Transação revertida (ROLLBACK)");
     }
     
-    debugLog("ERRO GERAL", [
+    error_log("Checkout General Error: " . $e->getMessage());
+    logCheckout("❌ ERRO GERAL NO PROCESSO", [
         'message' => $e->getMessage(),
         'trace' => $e->getTraceAsString()
     ]);
     
-    error_log("Checkout Error: " . $e->getMessage());
-    
-    $_SESSION['checkout_errors'] = [
-        "Erro ao processar pedido. Tente novamente.",
-        "Detalhes: " . $e->getMessage()
-    ];
+    $_SESSION['checkout_errors'] = ["Erro inesperado. Por favor, tente novamente."];
     $_SESSION['checkout_data'] = $old_data;
     
     header('Location: checkout.php?plan=' . urlencode($plan));

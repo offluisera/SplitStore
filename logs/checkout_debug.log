@@ -6,3 +6,134 @@
 [2026-01-07 03:42:24] Validações concluídas: {"total_errors":0}
 [2026-01-07 03:42:24] Erro ao verificar slug: {"error":"SQLSTATE[42S22]: Column not found: 1054 Unknown column 'store_slug' in 'where clause'"}
 [2026-01-07 03:42:24] Retornando ao checkout com erros: {"errors":["Erro ao verificar URL da loja. Tente novamente."]}
+[2026-01-07 04:01:48] === INÍCIO DO PROCESSAMENTO ===
+[2026-01-07 04:01:48] Conexão com banco OK
+[2026-01-07 04:01:48] Iniciando validações
+[2026-01-07 04:01:48] Validações concluídas: {"total_errors":0}
+[2026-01-07 04:01:48] Todas validações OK
+[2026-01-07 04:01:48] Credenciais geradas
+[2026-01-07 04:01:48] Iniciando transação
+[2026-01-07 04:01:48] Loja criada no banco: {"store_id":"3"}
+[2026-01-07 04:01:48] Pasta física criada: {"path":"\/www\/wwwroot\/splitstore.com.br\/stores\/testando\/"}
+[2026-01-07 04:01:48] Transação criada: {"transaction_id":"2"}
+[2026-01-07 04:01:48] Transação atualizada com PIX
+[2026-01-07 04:01:48] === PROCESSAMENTO CONCLUÍDO ===
+[2026-01-07 13:57:18] 🚀 INÍCIO DO PROCESSO DE CHECKOUT
+--------------------------------------------------------------------------------
+[2026-01-07 13:57:18] ✓ Banco de dados conectado
+--------------------------------------------------------------------------------
+[2026-01-07 13:57:18] 📝 Dados recebidos do formulário
+Array
+(
+    [first_name] => Luis Fernando
+    [last_name] => Bordignon da Silva
+    [email] => tiaoband@gmail.com
+    [cpf_length] => 11
+    [phone_length] => 11
+    [store_name] => testere
+    [store_slug] => minhalojinha
+    [plan] => basic
+    [billing_cycle] => monthly
+    [payment_method] => pix
+    [terms_accepted] => SIM
+)
+
+--------------------------------------------------------------------------------
+[2026-01-07 13:57:18] 🔍 Iniciando validações...
+--------------------------------------------------------------------------------
+[2026-01-07 13:57:18] ❌ E-mail duplicado: tiaoband@gmail.com
+--------------------------------------------------------------------------------
+[2026-01-07 13:57:18] ❌ Validação falhou. Total de erros: 1
+Array
+(
+    [0] => Este e-mail já está cadastrado
+)
+
+--------------------------------------------------------------------------------
+[2026-01-07 13:57:34] 🚀 INÍCIO DO PROCESSO DE CHECKOUT
+--------------------------------------------------------------------------------
+[2026-01-07 13:57:35] ✓ Banco de dados conectado
+--------------------------------------------------------------------------------
+[2026-01-07 13:57:35] 📝 Dados recebidos do formulário
+Array
+(
+    [first_name] => Luis Fernando
+    [last_name] => Bordignon da Silva
+    [email] => adminer@gmail.com
+    [cpf_length] => 11
+    [phone_length] => 11
+    [store_name] => testere
+    [store_slug] => minhalojinha
+    [plan] => basic
+    [billing_cycle] => monthly
+    [payment_method] => pix
+    [terms_accepted] => SIM
+)
+
+--------------------------------------------------------------------------------
+[2026-01-07 13:57:35] 🔍 Iniciando validações...
+--------------------------------------------------------------------------------
+[2026-01-07 13:57:35] ✓ Todas as validações passaram
+--------------------------------------------------------------------------------
+[2026-01-07 13:57:35] 💰 Plano selecionado
+Array
+(
+    [plan] => basic
+    [name] => Starter
+    [billing_cycle] => monthly
+    [amount] => 14.99
+)
+
+--------------------------------------------------------------------------------
+[2026-01-07 13:57:35] 🔑 Credenciais geradas
+Array
+(
+    [api_key] => ca_8138f58442cede5b0d3a0142ed555774
+    [api_secret_preview] => ck_cb9f08a95eeee0de2...
+)
+
+--------------------------------------------------------------------------------
+[2026-01-07 13:57:35] 💾 Iniciando inserção no banco de dados...
+--------------------------------------------------------------------------------
+[2026-01-07 13:57:35] ✓ Transação iniciada
+--------------------------------------------------------------------------------
+[2026-01-07 13:57:35] ✓ Senha hasheada
+--------------------------------------------------------------------------------
+[2026-01-07 13:57:35] 📤 Executando INSERT na tabela stores
+Array
+(
+    [store_name] => testere
+    [store_slug] => minhalojinha
+    [owner_name] => Luis Fernando Bordignon da Silva
+    [email] => adminer@gmail.com
+    [plan] => basic
+)
+
+--------------------------------------------------------------------------------
+[2026-01-07 13:57:35] ✓ Loja inserida com sucesso. ID: 5
+--------------------------------------------------------------------------------
+[2026-01-07 13:57:35] 📤 Executando INSERT na tabela transactions
+--------------------------------------------------------------------------------
+[2026-01-07 13:57:35] ✓ Transação criada. ID: 3
+--------------------------------------------------------------------------------
+[2026-01-07 13:57:35] 🔲 Gerando QR Code PIX...
+--------------------------------------------------------------------------------
+[2026-01-07 13:57:35] 📤 Atualizando transação com dados do PIX
+--------------------------------------------------------------------------------
+[2026-01-07 13:57:35] ✓ Transação atualizada com QR Code
+--------------------------------------------------------------------------------
+[2026-01-07 13:57:35] ✓ Transação do banco COMMITADA com sucesso
+--------------------------------------------------------------------------------
+[2026-01-07 13:57:35] ✓ Dados salvos na sessão
+Array
+(
+    [store_id] => 5
+    [transaction_id] => 3
+    [amount] => 14.99
+)
+
+--------------------------------------------------------------------------------
+[2026-01-07 13:57:35] 🎉 PROCESSO CONCLUÍDO COM SUCESSO!
+--------------------------------------------------------------------------------
+[2026-01-07 13:57:35] 🔄 Redirecionando para: payment.php
+--------------------------------------------------------------------------------

@@ -1,15 +1,9 @@
 <?php
 /**
  * ============================================
- * SPLITSTORE - SISTEMA DE CRIAÇÃO AUTOMÁTICA DE LOJAS
+ * SPLITSTORE - CRIADOR DE LOJAS FÍSICAS ✅
  * ============================================
- * Salve como: includes/store_creator.php
- * 
- * FUNÇÕES:
- * 1. Cria pasta física em store/
- * 2. Copia template da loja
- * 3. Configura permissões
- * 4. Valida e trata erros
+ * CORRIGIDO: Cria em /stores/ (plural)
  */
 
 class StoreCreator {
@@ -18,11 +12,11 @@ class StoreCreator {
     private $template_path;
     
     public function __construct() {
-        // Define caminhos
-        $this->base_path = $_SERVER['DOCUMENT_ROOT'] . '/store/';
+        // ⭐ CORRIGIDO: Agora usa /stores/ (plural)
+        $this->base_path = $_SERVER['DOCUMENT_ROOT'] . '/stores/';
         $this->template_path = __DIR__ . '/../store_template/';
         
-        // Cria diretório store/ se não existir
+        // Cria diretório stores/ se não existir
         if (!is_dir($this->base_path)) {
             @mkdir($this->base_path, 0755, true);
         }
@@ -30,10 +24,6 @@ class StoreCreator {
     
     /**
      * Cria a estrutura completa da loja
-     * 
-     * @param string $store_slug - URL da loja (ex: "minhaloja")
-     * @param array $store_data - Dados da loja do banco
-     * @return array ['success' => bool, 'message' => string, 'path' => string]
      */
     public function createStore($store_slug, $store_data = []) {
         try {
@@ -58,7 +48,7 @@ class StoreCreator {
             if (!is_writable($this->base_path)) {
                 return [
                     'success' => false,
-                    'message' => 'Sem permissão de escrita em /store/. Execute: chmod 755 /store/'
+                    'message' => 'Sem permissão de escrita em /stores/. Execute: chmod 755 /stores/'
                 ];
             }
             
@@ -74,7 +64,6 @@ class StoreCreator {
             $template_created = $this->copyTemplate($store_path, $store_slug, $store_data);
             
             if (!$template_created) {
-                // Remove pasta se falhar
                 @rmdir($store_path);
                 return [
                     'success' => false,
@@ -86,13 +75,13 @@ class StoreCreator {
             $this->createHtaccess($store_path);
             
             // 7. LOG DE SUCESSO
-            error_log("✅ Loja criada com sucesso: {$store_slug}");
+            error_log("✅ Loja criada: {$store_slug}");
             
             return [
                 'success' => true,
                 'message' => 'Loja criada com sucesso!',
                 'path' => $store_path,
-                'url' => "https://{$_SERVER['HTTP_HOST']}/store/{$store_slug}/"
+                'url' => "https://{$_SERVER['HTTP_HOST']}/stores/{$store_slug}/"
             ];
             
         } catch (Exception $e) {
@@ -105,16 +94,13 @@ class StoreCreator {
     }
     
     /**
-     * Copia o template da loja
+     * Copia o template index.php
      */
     private function copyTemplate($store_path, $store_slug, $store_data) {
-        // Conteúdo do template index.php
         $template_content = <<<'PHP'
 <?php
 /**
- * ============================================
  * LOJA: {{STORE_NAME}}
- * ============================================
  * Gerada automaticamente pelo SplitStore
  */
 
@@ -122,9 +108,7 @@ ini_set('display_errors', 0);
 error_reporting(E_ALL);
 session_start();
 
-// ==================================================================
-// CONEXÃO COM BANCO
-// ==================================================================
+// Conexão com banco
 $db_found = false;
 $possible_paths = [
     __DIR__ . '/../../includes/db.php',
@@ -143,13 +127,10 @@ if (!$db_found || !isset($pdo)) {
     die("Erro: Banco de dados não conectado.");
 }
 
-// ==================================================================
-// BUSCA DADOS DA LOJA
-// ==================================================================
+// Busca dados da loja
 $store_slug = '{{STORE_SLUG}}';
 
 try {
-    // Busca loja pelo slug
     $stmt = $pdo->prepare("
         SELECT s.*, sc.* 
         FROM stores s
@@ -163,7 +144,7 @@ try {
         die("Loja não encontrada ou inativa.");
     }
     
-    // Busca produtos ativos
+    // Busca produtos
     $stmt = $pdo->prepare("
         SELECT * FROM products 
         WHERE store_id = ? AND status = 'active'
@@ -176,7 +157,6 @@ try {
     die("Erro: " . $e->getMessage());
 }
 
-// Cores padrão se não configuradas
 $primaryColor = $store['primary_color'] ?? '#8b5cf6';
 $secondaryColor = $store['secondary_color'] ?? '#0f172a';
 $logoUrl = $store['logo_url'] ?? '';
@@ -191,9 +171,8 @@ function formatMoney($val) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= htmlspecialchars($store['store_name']) ?></title>
-    <meta name="description" content="<?= htmlspecialchars($store['store_description'] ?? 'Loja oficial') ?>">
     
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -212,70 +191,59 @@ function formatMoney($val) {
     <style>
         body { background: <?= $secondaryColor ?>; color: white; }
         .glass { background: rgba(255,255,255,0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
-        .glass-strong { background: rgba(20,20,20,0.8); backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.1); }
         .product-card { transition: all 0.3s ease; }
         .product-card:hover { 
             transform: translateY(-5px); 
             border-color: <?= $primaryColor ?>;
-            box-shadow: 0 10px 30px -10px <?= $primaryColor ?>40; 
         }
     </style>
 </head>
 <body class="min-h-screen flex flex-col">
     
-    <!-- NAVBAR -->
-    <nav class="fixed top-0 w-full z-50 glass-strong h-20">
+    <nav class="fixed top-0 w-full z-50 bg-black/80 backdrop-blur-xl border-b border-white/5 h-20">
         <div class="max-w-7xl mx-auto px-6 h-full flex items-center justify-between">
             <div class="flex items-center gap-4">
                 <?php if ($logoUrl): ?>
-                    <img src="<?= htmlspecialchars($logoUrl) ?>" class="h-10 object-contain" alt="Logo">
+                    <img src="<?= htmlspecialchars($logoUrl) ?>" class="h-10 object-contain">
                 <?php else: ?>
-                    <div class="w-10 h-10 bg-primary rounded-xl flex items-center justify-center font-black text-white text-lg shadow-lg">
+                    <div class="w-10 h-10 bg-primary rounded-xl flex items-center justify-center font-black text-white">
                         <?= strtoupper(substr($store['store_name'], 0, 1)) ?>
                     </div>
                 <?php endif; ?>
-                <span class="font-black text-xl uppercase tracking-tight text-white">
-                    <?= htmlspecialchars($store['store_name']) ?>
-                </span>
+                <span class="font-black text-xl uppercase"><?= htmlspecialchars($store['store_name']) ?></span>
             </div>
             
-            <button onclick="toggleCart()" class="relative p-3 glass rounded-xl hover:bg-white/10 transition">
+            <button onclick="toggleCart()" class="relative p-3 glass rounded-xl hover:bg-white/10">
                 <i data-lucide="shopping-cart" class="w-6 h-6"></i>
-                <span id="cartBadge" class="absolute -top-1 -right-1 bg-primary text-white text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-full opacity-0">0</span>
+                <span id="cartBadge" class="absolute -top-1 -right-1 bg-primary text-white text-xs font-black w-5 h-5 flex items-center justify-center rounded-full opacity-0">0</span>
             </button>
         </div>
     </nav>
     
-    <!-- HEADER -->
     <header class="pt-32 pb-16 text-center px-6">
-        <h1 class="text-5xl md:text-7xl font-black uppercase mb-6">
-            <?= htmlspecialchars($store['store_title'] ?? $store['store_name']) ?>
-        </h1>
-        <p class="text-zinc-400 text-lg max-w-2xl mx-auto">
-            <?= htmlspecialchars($store['store_description'] ?? 'Bem-vindo à nossa loja') ?>
-        </p>
+        <h1 class="text-6xl font-black uppercase mb-6"><?= htmlspecialchars($store['store_title'] ?? $store['store_name']) ?></h1>
+        <p class="text-zinc-400 text-lg"><?= htmlspecialchars($store['store_description'] ?? 'Bem-vindo!') ?></p>
     </header>
     
-    <!-- PRODUTOS -->
     <main class="flex-grow max-w-7xl mx-auto px-6 pb-24 w-full">
         <?php if (empty($products)): ?>
             <div class="glass rounded-3xl p-24 text-center">
                 <i data-lucide="package-open" class="w-16 h-16 text-zinc-600 mx-auto mb-4"></i>
-                <h3 class="text-xl font-bold mb-2">Nenhum produto disponível</h3>
-                <p class="text-zinc-500">Os produtos aparecerão aqui em breve.</p>
+                <h3 class="text-xl font-bold mb-2">Sem produtos</h3>
+                <p class="text-zinc-500">Em breve novos produtos!</p>
             </div>
         <?php else: ?>
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 <?php foreach ($products as $product): ?>
                 <div class="product-card glass rounded-2xl p-4 flex flex-col border border-white/5">
-                    <div class="aspect-square rounded-xl bg-black/40 mb-4 flex items-center justify-center overflow-hidden">
+                    <div class="aspect-square rounded-xl bg-black/40 mb-4 flex items-center justify-center">
                         <?php if (!empty($product['image_url'])): ?>
-                            <img src="<?= htmlspecialchars($product['image_url']) ?>" class="w-full h-full object-cover">
+                            <img src="<?= htmlspecialchars($product['image_url']) ?>" class="w-full h-full object-cover rounded-xl">
                         <?php else: ?>
                             <i data-lucide="box" class="w-12 h-12 text-zinc-700"></i>
                         <?php endif; ?>
                     </div>
-                    <h3 class="font-bold text-lg uppercase mb-2"><?= htmlspecialchars($product['name']) ?></h3>
+                    <h3 class="font-bold text-lg mb-2"><?= htmlspecialchars($product['name']) ?></h3>
                     <p class="text-xs text-zinc-500 flex-grow"><?= htmlspecialchars($product['description'] ?? '') ?></p>
                     <div class="mt-4 pt-4 border-t border-white/5 flex items-center justify-between">
                         <span class="text-xl font-black text-primary"><?= formatMoney($product['price']) ?></span>
@@ -289,18 +257,16 @@ function formatMoney($val) {
         <?php endif; ?>
     </main>
     
-    <!-- FOOTER -->
-    <footer class="border-t border-white/5 bg-black/20 py-10">
+    <footer class="border-t border-white/5 py-10">
         <div class="max-w-7xl mx-auto px-6 text-center">
             <p class="text-white font-bold">© <?= date('Y') ?> <?= htmlspecialchars($store['store_name']) ?></p>
             <p class="text-zinc-600 text-xs mt-1">Powered by SplitStore</p>
         </div>
     </footer>
     
-    <!-- MODAL CARRINHO -->
     <div id="cartModal" class="fixed inset-0 z-[100] hidden">
-        <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="toggleCart()"></div>
-        <div class="absolute right-0 top-0 h-full w-full max-w-md bg-secondary border-l border-white/10 p-6 flex flex-col" id="cartPanel">
+        <div class="absolute inset-0 bg-black/60" onclick="toggleCart()"></div>
+        <div class="absolute right-0 top-0 h-full w-full max-w-md bg-secondary border-l border-white/10 p-6 flex flex-col">
             <div class="flex justify-between items-center mb-8">
                 <h2 class="text-2xl font-black uppercase">Carrinho</h2>
                 <button onclick="toggleCart()" class="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center">
@@ -310,7 +276,7 @@ function formatMoney($val) {
             <div id="cartItems" class="flex-1 overflow-y-auto"></div>
             <div class="mt-6 pt-6 border-t border-white/10">
                 <div class="flex justify-between mb-6">
-                    <span class="text-zinc-400 font-bold">Total</span>
+                    <span class="text-zinc-400">Total</span>
                     <span id="cartTotal" class="text-3xl font-black text-primary">R$ 0,00</span>
                 </div>
                 <button onclick="checkout()" class="w-full bg-primary text-white py-4 rounded-xl font-black uppercase">
@@ -345,7 +311,7 @@ function formatMoney($val) {
                     <div class="w-16 h-16 bg-black/30 rounded-lg"></div>
                     <div class="flex-1">
                         <div class="font-bold text-sm">${item.name}</div>
-                        <div class="text-xs text-primary font-bold">R$ ${parseFloat(item.price).toFixed(2)}</div>
+                        <div class="text-xs text-primary">R$ ${parseFloat(item.price).toFixed(2)}</div>
                     </div>
                     <button onclick="removeFromCart(${i})" class="text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
                 </div>`;
@@ -378,7 +344,7 @@ function formatMoney($val) {
         }
         
         function checkout() {
-            alert('Sistema de pagamento será integrado em breve!');
+            alert('Checkout em desenvolvimento!');
         }
         
         updateCart();
@@ -394,26 +360,22 @@ PHP;
             $template_content
         );
         
-        // Salva o arquivo
         return file_put_contents($store_path . 'index.php', $template_content) !== false;
     }
     
     /**
-     * Cria .htaccess para Apache
+     * Cria .htaccess
      */
     private function createHtaccess($store_path) {
         $htaccess_content = <<<'HTACCESS'
-# SplitStore - Configuração da Loja
 RewriteEngine On
 RewriteBase /
 
-# Se não for arquivo ou diretório, redireciona para index.php
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^(.*)$ index.php [QSA,L]
 
-# Proteção de arquivos sensíveis
-<FilesMatch "\.(env|log|sql|bak)$">
+<FilesMatch "\.(env|log|sql)$">
     Order allow,deny
     Deny from all
 </FilesMatch>
@@ -421,31 +383,5 @@ HTACCESS;
         
         @file_put_contents($store_path . '.htaccess', $htaccess_content);
     }
-    
-    /**
-     * Remove loja (CUIDADO!)
-     */
-    public function deleteStore($store_slug) {
-        $store_path = $this->base_path . $store_slug . '/';
-        
-        if (!is_dir($store_path)) {
-            return ['success' => false, 'message' => 'Loja não existe'];
-        }
-        
-        // Remove recursivamente
-        $this->removeDirectory($store_path);
-        
-        return ['success' => true, 'message' => 'Loja removida'];
-    }
-    
-    private function removeDirectory($dir) {
-        if (!is_dir($dir)) return;
-        
-        $files = array_diff(scandir($dir), ['.', '..']);
-        foreach ($files as $file) {
-            $path = $dir . '/' . $file;
-            is_dir($path) ? $this->removeDirectory($path) : unlink($path);
-        }
-        rmdir($dir);
-    }
 }
+?>
