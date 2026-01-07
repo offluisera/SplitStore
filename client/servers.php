@@ -8,6 +8,9 @@
 
 session_start();
 require_once '../includes/db.php';
+require_once '../includes/auth_guard.php';
+
+requireAccess(__FILE__);
 
 // Proteção de acesso
 if (!isset($_SESSION['store_logged']) || $_SESSION['store_logged'] !== true) {

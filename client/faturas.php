@@ -1,9 +1,72 @@
+<?php
+/**
+ * ============================================
+ * PÁGINA DE FATURAS - client/faturas.php
+ * ============================================
+ */
+
+session_start();
+require_once '../includes/db.php';
+require_once '../includes/auth_guard.php';
+
+// Protege a página
+requireAccess(__FILE__);
+
+$store_id = $_SESSION['store_id'];
+$store_name = $_SESSION['store_name'];
+
+// Mensagem de acesso negado
+$access_denied_message = $_SESSION['access_denied'] ?? null;
+unset($_SESSION['access_denied']);
+
+// Busca faturas
+try {
+    $stmt = $pdo->prepare("
+        SELECT *,
+            TIMESTAMPDIFF(SECOND, NOW(), due_date) as seconds_remaining
+        FROM invoices
+        WHERE store_id = ?
+        ORDER BY created_at DESC
+    ");
+    $stmt->execute([$store_id]);
+    $invoices = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Separa pendente da primeira
+    $pending_invoice = null;
+    $history_invoices = [];
+    
+    foreach ($invoices as $inv) {
+        if ($inv['status'] === 'pending' && $inv['seconds_remaining'] > 0) {
+            $pending_invoice = $inv;
+        } else {
+            $history_invoices[] = $inv;
+        }
+    }
+    
+} catch (Exception $e) {
+    error_log("Invoices Error: " . $e->getMessage());
+    $invoices = [];
+}
+
+function formatMoney($val) {
+    return 'R$ ' . number_format($val, 2, ',', '.');
+}
+
+function getStatusBadge($status) {
+    $badges = [
+        'pending' => '<span class="bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 px-3 py-1 rounded-lg text-xs font-black uppercase">Pendente</span>',
+        'paid' => '<span class="bg-green-500/10 text-green-500 border border-green-500/20 px-3 py-1 rounded-lg text-xs font-black uppercase">Pago</span>',
+        'expired' => '<span class="bg-red-500/10 text-red-500 border border-red-500/20 px-3 py-1 rounded-lg text-xs font-black uppercase">Vencido</span>',
+        'cancelled' => '<span class="bg-zinc-500/10 text-zinc-500 border border-zinc-500/20 px-3 py-1 rounded-lg text-xs font-black uppercase">Cancelado</span>',
+    ];
+    return $badges[$status] ?? $status;
+}
+?>
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Faturas | SplitStore</title>
+    <title>Faturas | <?= htmlspecialchars($store_name) ?></title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;900&display=swap" rel="stylesheet">
@@ -11,81 +74,14 @@
         body { font-family: 'Inter', sans-serif; background-color: #050505; color: white; }
         .glass { background: rgba(255, 255, 255, 0.02); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); }
         
-        .invoice-card {
-            transition: all 0.3s ease;
-        }
+        .invoice-card { transition: all 0.3s ease; }
+        .invoice-card:hover { transform: translateY(-2px); border-color: rgba(239, 68, 68, 0.3); }
         
-        .invoice-card:hover {
-            transform: translateY(-2px);
-            border-color: rgba(239, 68, 68, 0.3);
-        }
-        
-        .countdown-warning {
-            animation: pulse 1s ease-in-out infinite;
-        }
-        
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.6; }
-        }
+        .countdown-warning { animation: pulse 1s ease-in-out infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
     </style>
 </head>
 <body class="flex min-h-screen">
-
-    <?php
-    session_start();
-    require_once '../includes/db.php';
-    require_once '../includes/auth_guard.php';
-    
-    // Protege a página
-    requireAccess(__FILE__);
-    
-    $store_id = $_SESSION['store_id'];
-    $store_name = $_SESSION['store_name'];
-    
-    // Busca faturas
-    try {
-        $stmt = $pdo->prepare("
-            SELECT *,
-                TIMESTAMPDIFF(MINUTE, NOW(), due_date) as minutes_remaining
-            FROM invoices
-            WHERE store_id = ?
-            ORDER BY created_at DESC
-        ");
-        $stmt->execute([$store_id]);
-        $invoices = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        // Separa pendente da primeira
-        $pending_invoice = null;
-        $history_invoices = [];
-        
-        foreach ($invoices as $inv) {
-            if ($inv['status'] === 'pending' && $inv['minutes_remaining'] > 0) {
-                $pending_invoice = $inv;
-            } else {
-                $history_invoices[] = $inv;
-            }
-        }
-        
-    } catch (Exception $e) {
-        error_log("Invoices Error: " . $e->getMessage());
-        $invoices = [];
-    }
-    
-    function formatMoney($val) {
-        return 'R$ ' . number_format($val, 2, ',', '.');
-    }
-    
-    function getStatusBadge($status) {
-        $badges = [
-            'pending' => '<span class="bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 px-3 py-1 rounded-lg text-xs font-black uppercase">Pendente</span>',
-            'paid' => '<span class="bg-green-500/10 text-green-500 border border-green-500/20 px-3 py-1 rounded-lg text-xs font-black uppercase">Pago</span>',
-            'expired' => '<span class="bg-red-500/10 text-red-500 border border-red-500/20 px-3 py-1 rounded-lg text-xs font-black uppercase">Vencido</span>',
-            'cancelled' => '<span class="bg-zinc-500/10 text-zinc-500 border border-zinc-500/20 px-3 py-1 rounded-lg text-xs font-black uppercase">Cancelado</span>',
-        ];
-        return $badges[$status] ?? $status;
-    }
-    ?>
 
     <?php include 'components/sidebar.php'; ?>
 
@@ -112,6 +108,27 @@
             <?php endif; ?>
         </header>
 
+        <!-- Mensagem de Acesso Negado -->
+        <?php if ($access_denied_message): ?>
+            <div class="glass border-2 border-yellow-600/30 bg-yellow-600/5 rounded-3xl p-6 mb-8 animate-in">
+                <div class="flex items-start gap-4">
+                    <i data-lucide="lock" class="w-6 h-6 text-yellow-500 flex-shrink-0"></i>
+                    <div>
+                        <h3 class="text-lg font-black text-yellow-500 mb-2">Acesso Restrito</h3>
+                        <p class="text-zinc-400 mb-4"><?= htmlspecialchars($access_denied_message) ?></p>
+                        
+                        <?php if ($pending_invoice): ?>
+                            <a href="../payment.php" 
+                               class="inline-flex items-center gap-2 bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-3 rounded-xl font-bold text-sm transition">
+                                <i data-lucide="credit-card" class="w-4 h-4"></i>
+                                Efetuar Pagamento Agora
+                            </a>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+        <?php endif; ?>
+
         <!-- Fatura Pendente (Destaque) -->
         <?php if ($pending_invoice): ?>
             <div class="glass border-2 border-red-600/30 bg-red-600/5 rounded-3xl p-10 mb-12">
@@ -124,13 +141,13 @@
                         <p class="text-zinc-400 text-sm">Aguardando confirmação de pagamento</p>
                     </div>
                     
-                    <?php if ($pending_invoice['minutes_remaining'] > 0): ?>
+                    <?php if ($pending_invoice['seconds_remaining'] > 0): ?>
                         <div class="text-right">
                             <p class="text-xs text-zinc-600 mb-1">Expira em</p>
-                            <p class="text-3xl font-black <?= $pending_invoice['minutes_remaining'] < 10 ? 'text-red-500 countdown-warning' : 'text-yellow-500' ?>" 
+                            <p class="text-3xl font-black <?= $pending_invoice['seconds_remaining'] < 600 ? 'text-red-500 countdown-warning' : 'text-yellow-500' ?>" 
                                id="countdown-<?= $pending_invoice['id'] ?>"
                                data-expiry="<?= strtotime($pending_invoice['due_date']) ?>">
-                                <?= gmdate("i:s", $pending_invoice['minutes_remaining'] * 60) ?>
+                                <?= gmdate("i:s", $pending_invoice['seconds_remaining']) ?>
                             </p>
                         </div>
                     <?php endif; ?>
@@ -153,7 +170,7 @@
                 </div>
 
                 <div class="flex gap-4">
-                    <a href="../payment.php?invoice=<?= $pending_invoice['id'] ?>" 
+                    <a href="../payment.php" 
                        class="flex-1 bg-red-600 hover:bg-red-700 text-white py-4 rounded-xl font-black uppercase text-sm transition flex items-center justify-center gap-2">
                         <i data-lucide="credit-card" class="w-5 h-5"></i>
                         Ver Detalhes do Pagamento
@@ -174,7 +191,7 @@
                 <div class="text-center py-16 opacity-30">
                     <i data-lucide="file-text" class="w-16 h-16 mx-auto mb-4 text-zinc-700"></i>
                     <p class="text-xs font-bold uppercase tracking-widest text-zinc-700">
-                        Nenhuma fatura paga ainda
+                        Nenhuma fatura processada ainda
                     </p>
                 </div>
             <?php else: ?>
@@ -223,7 +240,7 @@
                 if (remaining <= 0) {
                     el.textContent = 'Expirado';
                     el.classList.add('text-red-500');
-                    location.reload(); // Recarrega para atualizar status
+                    location.reload();
                     return;
                 }
                 
@@ -231,7 +248,7 @@
                 const seconds = remaining % 60;
                 el.textContent = String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
                 
-                if (remaining < 600) { // 10 minutos
+                if (remaining < 600) {
                     el.classList.add('text-red-500', 'countdown-warning');
                 }
             }
