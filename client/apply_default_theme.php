@@ -1,9 +1,10 @@
 <?php
 /**
  * ============================================
- * SPLITSTORE - APLICADOR DE TEMA PADRÃO
+ * SPLITSTORE - APLICADOR DE TEMA PADRÃO V3.0
  * ============================================
  * Aplica tema padrão profissional para novas lojas
+ * Arquivo: client/apply_default_theme.php
  */
 
 require_once '../includes/db.php';
@@ -13,7 +14,7 @@ requireAccess(__FILE__);
 
 // TEMA PADRÃO NEON GAMING (Profissional e Moderno)
 $defaultTheme = [
-    'template' => 'neon',
+    'template' => 'neon_gaming',
     'primary_color' => '#8b5cf6',
     'secondary_color' => '#0f172a',
     'accent_color' => '#ec4899',
@@ -74,9 +75,59 @@ function applyDefaultTheme($pdo, $store_id, $store_name) {
  * TEMPLATES PRÉ-DEFINIDOS
  */
 $premadeTemplates = [
+    // ===== TEMAS MINECRAFT =====
+    'nether_realm' => [
+        'name' => 'Nether Realm',
+        'template' => 'nether_realm',
+        'primary_color' => '#dc2626',
+        'secondary_color' => '#1a0505',
+        'accent_color' => '#f97316',
+        'background_pattern' => 'dots',
+        'card_style' => 'glass',
+        'button_style' => 'rounded',
+        'font_family' => 'rajdhani',
+        'show_particles' => 1,
+        'show_blur_effects' => 1,
+        'dark_mode' => 1,
+        'show_gradient_bg' => 1
+    ],
+    
+    'ender_kingdom' => [
+        'name' => 'Ender Kingdom',
+        'template' => 'ender_kingdom',
+        'primary_color' => '#8b5cf6',
+        'secondary_color' => '#000000',
+        'accent_color' => '#a855f7',
+        'background_pattern' => 'hexagon',
+        'card_style' => 'glass',
+        'button_style' => 'rounded',
+        'font_family' => 'inter',
+        'show_particles' => 1,
+        'show_blur_effects' => 1,
+        'dark_mode' => 1,
+        'show_gradient_bg' => 1
+    ],
+    
+    'emerald_valley' => [
+        'name' => 'Emerald Valley',
+        'template' => 'emerald_valley',
+        'primary_color' => '#10b981',
+        'secondary_color' => '#064e3b',
+        'accent_color' => '#34d399',
+        'background_pattern' => 'grid',
+        'card_style' => 'glass',
+        'button_style' => 'rounded',
+        'font_family' => 'poppins',
+        'show_particles' => 1,
+        'show_blur_effects' => 1,
+        'dark_mode' => 1,
+        'show_gradient_bg' => 1
+    ],
+    
+    // ===== TEMAS MODERNOS =====
     'neon_gaming' => [
         'name' => 'Neon Gaming',
-        'template' => 'neon',
+        'template' => 'neon_gaming',
         'primary_color' => '#8b5cf6',
         'secondary_color' => '#0f172a',
         'accent_color' => '#ec4899',
@@ -172,7 +223,7 @@ $premadeTemplates = [
     
     'minimal_light' => [
         'name' => 'Minimal Light',
-        'template' => 'minimal',
+        'template' => 'minimal_light',
         'primary_color' => '#6366f1',
         'secondary_color' => '#ffffff',
         'accent_color' => '#8b5cf6',
@@ -188,7 +239,7 @@ $premadeTemplates = [
     
     'cyberpunk' => [
         'name' => 'Cyberpunk 2077',
-        'template' => 'neon',
+        'template' => 'cyberpunk',
         'primary_color' => '#fcee09',
         'secondary_color' => '#000000',
         'accent_color' => '#00f0ff',
@@ -280,7 +331,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['apply_template'])) {
 }
 
 /**
- * EXEMPLOS DE CSS PERSONALIZADOS POR TEMA
+ * CSS PERSONALIZADOS POR TEMA
  */
 $customCSS = [
     'neon_gaming' => "
@@ -327,6 +378,179 @@ h1, h2, h3 {
     background: linear-gradient(135deg, #f59e0b, #fbbf24);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
+}
+",
+
+    // ===== CSS TEMAS MINECRAFT =====
+    'nether_realm' => "
+/* Nether Realm - Efeitos de Lava e Fogo */
+@keyframes lava-bubble {
+    0%, 100% { transform: translateY(0px) scale(1); }
+    50% { transform: translateY(-10px) scale(1.05); }
+}
+
+@keyframes fire-glow {
+    0%, 100% { 
+        box-shadow: 0 0 40px rgba(220, 38, 38, 0.6),
+                    0 0 80px rgba(249, 115, 22, 0.3);
+    }
+    50% { 
+        box-shadow: 0 0 60px rgba(220, 38, 38, 0.8),
+                    0 0 100px rgba(249, 115, 22, 0.5);
+    }
+}
+
+.product-card {
+    animation: lava-bubble 4s ease-in-out infinite;
+}
+
+.product-card:hover {
+    animation: fire-glow 1s ease-in-out infinite;
+}
+
+.btn-primary {
+    position: relative;
+    overflow: hidden;
+}
+
+.btn-primary::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.3);
+    transform: translate(-50%, -50%);
+    transition: width 0.6s, height 0.6s;
+}
+
+.btn-primary:hover::before {
+    width: 300px;
+    height: 300px;
+}
+",
+
+    'ender_kingdom' => "
+/* Ender Kingdom - Efeitos de Teletransporte */
+@keyframes ender-particle {
+    0% {
+        transform: translateY(0) scale(1);
+        opacity: 1;
+    }
+    100% {
+        transform: translateY(-30px) scale(0);
+        opacity: 0;
+    }
+}
+
+@keyframes dimensional-shift {
+    0%, 100% {
+        filter: hue-rotate(0deg);
+    }
+    50% {
+        filter: hue-rotate(20deg);
+    }
+}
+
+.product-card {
+    position: relative;
+}
+
+.product-card::after {
+    content: '';
+    position: absolute;
+    inset: -20px;
+    background: radial-gradient(circle, rgba(139, 92, 246, 0.3) 0%, transparent 70%);
+    opacity: 0;
+    transition: opacity 0.5s;
+    pointer-events: none;
+    z-index: -1;
+}
+
+.product-card:hover::after {
+    opacity: 1;
+    animation: dimensional-shift 2s ease-in-out infinite;
+}
+
+@keyframes ender-glow {
+    0%, 100% {
+        box-shadow: 0 0 20px rgba(139, 92, 246, 0.5),
+                    inset 0 0 20px rgba(168, 85, 247, 0.2);
+    }
+    50% {
+        box-shadow: 0 0 40px rgba(139, 92, 246, 0.8),
+                    inset 0 0 30px rgba(168, 85, 247, 0.4);
+    }
+}
+
+.btn-primary:hover {
+    animation: ender-glow 1.5s ease-in-out infinite;
+}
+",
+
+    'emerald_valley' => "
+/* Emerald Valley - Efeitos de Esmeralda */
+@keyframes emerald-shine {
+    0% {
+        background-position: -200% center;
+    }
+    100% {
+        background-position: 200% center;
+    }
+}
+
+@keyframes village-pulse {
+    0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+    }
+    50% {
+        transform: scale(1.02);
+        box-shadow: 0 0 40px rgba(16, 185, 129, 0.6);
+    }
+}
+
+.product-card {
+    position: relative;
+    overflow: hidden;
+}
+
+.product-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(90deg, 
+        transparent, 
+        rgba(52, 211, 153, 0.8), 
+        transparent);
+    transition: left 0.5s;
+}
+
+.product-card:hover::before {
+    left: 100%;
+}
+
+.product-card:hover {
+    animation: village-pulse 2s ease-in-out infinite;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, 
+        #10b981 0%, 
+        #34d399 25%, 
+        #6ee7b7 50%, 
+        #34d399 75%, 
+        #10b981 100%);
+    background-size: 200% 100%;
+}
+
+.btn-primary:hover {
+    animation: emerald-shine 2s linear infinite;
 }
 "
 ];
