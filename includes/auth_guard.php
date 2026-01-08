@@ -1,100 +1,152 @@
 <?php
 /**
  * ============================================
- * SISTEMA DE CONTROLE DE ACESSO - AUTH GUARD
+ * AUTH GUARD - CONTROLE DE ACESSO
  * ============================================
- * includes/auth_guard.php
- * 
- * Gerencia níveis de acesso baseado no status de pagamento
+ * Sistema de verificação de autenticação e controle de acesso
+ * baseado no status de pagamento da loja
  */
 
-if (!isset($_SESSION)) {
+// Inicia sessão se ainda não estiver iniciada
+if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
 /**
- * Verifica se o usuário está logado
+ * Verifica se usuário está logado
  */
 function isLoggedIn() {
     return isset($_SESSION['store_logged']) && $_SESSION['store_logged'] === true;
 }
 
 /**
- * Retorna o nível de acesso do usuário
- * - 'none': Não logado
- * - 'suspended': Conta suspensa
- * - 'restricted': Logado mas sem pagamento confirmado
- * - 'full': Pagamento confirmado, acesso total
+ * Redireciona para login se não estiver autenticado
+ */
+function requireLogin() {
+    if (!isLoggedIn()) {
+        header('Location: login.php');
+        exit;
+    }
+}
+
+/**
+ * Busca o nível de acesso da loja
+ * - full: Loja com pagamento confirmado
+ * - restricted: Loja aguardando primeiro pagamento
+ * - suspended: Loja suspensa por falta de pagamento
  */
 function getAccessLevel() {
     global $pdo;
     
     if (!isLoggedIn()) {
-        return 'none';
+        return 'restricted';
     }
     
+    $store_id = $_SESSION['store_id'];
+    
     try {
+        // Busca status da loja
         $stmt = $pdo->prepare("
             SELECT 
-                status,
-                first_payment_confirmed
-            FROM stores
-            WHERE id = ?
+                s.status,
+                s.access_level,
+                s.first_payment_confirmed,
+                s.activated_at
+            FROM stores s
+            WHERE s.id = ?
         ");
-        $stmt->execute([$_SESSION['store_id']]);
+        $stmt->execute([$store_id]);
         $store = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if (!$store) {
-            return 'none';
+            return 'restricted';
         }
         
-        // Conta suspensa
+        // Se loja está suspensa
         if ($store['status'] === 'suspended') {
             return 'suspended';
         }
         
-        // Pagamento confirmado = acesso total
+        // Se primeiro pagamento foi confirmado
         if ($store['first_payment_confirmed'] == 1) {
             return 'full';
         }
         
-        // Aguardando pagamento = acesso restrito
+        // Caso contrário, acesso restrito
         return 'restricted';
         
-    } catch (Exception $e) {
-        error_log("Auth Guard Error: " . $e->getMessage());
-        return 'none';
+    } catch (PDOException $e) {
+        error_log("Access Level Error: " . $e->getMessage());
+        return 'restricted';
     }
 }
 
 /**
- * Define quais páginas cada nível pode acessar
+ * Verifica se tem fatura pendente
  */
-function getAllowedPages($accessLevel) {
-    $pages = [
-        'none' => ['login.php', 'logout.php'],
-        'suspended' => ['login.php', 'logout.php', 'suspended.php'],
-        'restricted' => [
-            'login.php',
-            'logout.php',
-            'dashboard.php',
-            'faturas.php'
-        ],
-        'full' => [
-            'login.php',
-            'logout.php',
-            'dashboard.php',
-            'faturas.php',
-            'products.php',
-            'gerenciar_pedidos.php',
-            'customize.php',
-            'servers.php',
-            'integrations.php',
-            'settings.php'
-        ]
-    ];
+function hasPendingInvoice() {
+    global $pdo;
     
-    return $pages[$accessLevel] ?? [];
+    if (!isLoggedIn()) {
+        return false;
+    }
+    
+    $store_id = $_SESSION['store_id'];
+    
+    try {
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*) as count
+            FROM invoices
+            WHERE store_id = ?
+            AND status = 'pending'
+            AND due_date > NOW()
+        ");
+        $stmt->execute([$store_id]);
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        return $result['count'] > 0;
+        
+    } catch (PDOException $e) {
+        error_log("Pending Invoice Check Error: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Retorna badge de status de pagamento
+ */
+function getPaymentStatusBadge() {
+    $accessLevel = getAccessLevel();
+    
+    if ($accessLevel === 'full') {
+        return '<div class="flex items-center gap-2 bg-green-500/10 border border-green-500/20 text-green-500 px-3 py-2 rounded-xl">
+                    <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                    <span class="text-[10px] font-black uppercase">Sistema Ativo</span>
+                </div>';
+    } elseif ($accessLevel === 'suspended') {
+        return '<div class="flex items-center gap-2 bg-red-500/10 border border-red-500/20 text-red-500 px-3 py-2 rounded-xl">
+                    <i data-lucide="alert-circle" class="w-3 h-3"></i>
+                    <span class="text-[10px] font-black uppercase">Suspenso</span>
+                </div>';
+    } else {
+        return '<div class="flex items-center gap-2 bg-yellow-500/10 border border-yellow-500/20 text-yellow-500 px-3 py-2 rounded-xl">
+                    <i data-lucide="clock" class="w-3 h-3"></i>
+                    <span class="text-[10px] font-black uppercase">Aguardando Pagamento</span>
+                </div>';
+    }
+}
+
+/**
+ * Define páginas que são sempre acessíveis (mesmo em modo restrito)
+ */
+function getPublicPages() {
+    return [
+        'dashboard.php',
+        'faturas.php',
+        'logout.php',
+        'settings.php', // Permite acesso a configurações básicas
+        'noticias.php'  // Permite acesso ao gerenciamento de notícias
+    ];
 }
 
 /**
@@ -102,180 +154,88 @@ function getAllowedPages($accessLevel) {
  */
 function canAccessPage($page) {
     $accessLevel = getAccessLevel();
-    $allowedPages = getAllowedPages($accessLevel);
-    return in_array($page, $allowedPages);
-}
-
-/**
- * Protege uma página com redirecionamento automático
- * USO: requireAccess(__FILE__); no início de cada página protegida
- */
-function requireAccess($filePath) {
-    $page = basename($filePath);
     
-    // Verifica login
-    if (!isLoggedIn()) {
-        $_SESSION['redirect_after_login'] = $_SERVER['REQUEST_URI'];
-        header('Location: login.php?error=login_required');
-        exit;
-    }
-    
-    $accessLevel = getAccessLevel();
-    
-    // Conta suspensa
-    if ($accessLevel === 'suspended') {
-        if ($page !== 'suspended.php') {
-            header('Location: suspended.php');
-            exit;
-        }
+    // Se tem acesso total, pode acessar tudo
+    if ($accessLevel === 'full') {
         return true;
     }
     
-    // Verifica permissão
+    // Se está suspenso, só pode acessar dashboard e faturas
+    if ($accessLevel === 'suspended') {
+        return in_array($page, ['dashboard.php', 'faturas.php', 'logout.php']);
+    }
+    
+    // Se está em modo restrito, verifica se é página pública
+    return in_array($page, getPublicPages());
+}
+
+/**
+ * Middleware principal - verifica acesso à página atual
+ * USO: requireAccess(__FILE__) no início de cada página protegida
+ */
+function requireAccess($currentFile) {
+    // Primeiro verifica se está logado
+    requireLogin();
+    
+    // Extrai o nome do arquivo
+    $page = basename($currentFile);
+    
+    // Verifica se pode acessar
     if (!canAccessPage($page)) {
-        // Acesso restrito tentando acessar página bloqueada
-        if ($accessLevel === 'restricted') {
-            $_SESSION['access_denied'] = 'Complete seu pagamento para acessar esta funcionalidade.';
-            header('Location: faturas.php');
-            exit;
-        }
-        
-        // Fallback
-        header('Location: dashboard.php');
+        // Se não pode acessar, redireciona para dashboard
+        header('Location: dashboard.php?access_denied=1');
         exit;
     }
-    
-    return true;
 }
 
 /**
- * Retorna badge HTML do status de pagamento
+ * Verifica se store_id existe na sessão
  */
-function getPaymentStatusBadge() {
-    $accessLevel = getAccessLevel();
-    
-    $badges = [
-        'full' => '<span class="bg-green-500/10 text-green-500 border border-green-500/20 px-3 py-1 rounded-full text-[10px] font-black uppercase">✓ Ativo</span>',
-        'restricted' => '<span class="bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 px-3 py-1 rounded-full text-[10px] font-black uppercase animate-pulse">⚠ Pagamento Pendente</span>',
-        'suspended' => '<span class="bg-red-500/10 text-red-500 border border-red-500/20 px-3 py-1 rounded-full text-[10px] font-black uppercase">✗ Suspenso</span>',
-    ];
-    
-    return $badges[$accessLevel] ?? '';
+function hasStoreId() {
+    return isset($_SESSION['store_id']) && !empty($_SESSION['store_id']);
 }
 
 /**
- * Verifica se tem fatura pendente
+ * Exibe mensagem de acesso negado (se houver)
  */
-function hasPendingInvoice($store_id = null) {
-    global $pdo;
-    
-    if ($store_id === null) {
-        $store_id = $_SESSION['store_id'] ?? null;
+function showAccessDeniedMessage() {
+    if (isset($_GET['access_denied'])) {
+        return '<div class="glass border-yellow-600/20 bg-yellow-600/5 text-yellow-500 p-5 rounded-2xl mb-8 flex items-center gap-3">
+                    <i data-lucide="lock" class="w-5 h-5"></i>
+                    <div>
+                        <p class="font-bold mb-1">Acesso Restrito</p>
+                        <p class="text-sm text-zinc-400">Complete seu primeiro pagamento para desbloquear todas as funcionalidades.</p>
+                        <a href="faturas.php" class="text-sm text-yellow-500 font-bold hover:underline mt-2 inline-block">
+                            Ver Faturas →
+                        </a>
+                    </div>
+                </div>';
+    }
+    return '';
+}
+
+/**
+ * Helper para debug - mostra informações de acesso
+ */
+function debugAccessInfo() {
+    if (!isset($_GET['debug_access'])) {
+        return;
     }
     
-    if (!$store_id) return false;
-    
-    try {
-        $stmt = $pdo->prepare("
-            SELECT COUNT(*) 
-            FROM invoices 
-            WHERE store_id = ? 
-            AND status = 'pending'
-            AND due_date > NOW()
-        ");
-        $stmt->execute([$store_id]);
-        
-        return $stmt->fetchColumn() > 0;
-    } catch (Exception $e) {
-        return false;
+    echo '<div class="glass p-6 rounded-2xl mb-8 border border-blue-600/20">';
+    echo '<h3 class="text-lg font-black mb-4 text-blue-500">DEBUG - Informações de Acesso</h3>';
+    echo '<pre class="text-xs text-zinc-400 bg-black/30 p-4 rounded-xl overflow-auto">';
+    echo 'Logged In: ' . (isLoggedIn() ? 'YES' : 'NO') . "\n";
+    echo 'Store ID: ' . ($_SESSION['store_id'] ?? 'N/A') . "\n";
+    echo 'Store Name: ' . ($_SESSION['store_name'] ?? 'N/A') . "\n";
+    echo 'Access Level: ' . getAccessLevel() . "\n";
+    echo 'Has Pending Invoice: ' . (hasPendingInvoice() ? 'YES' : 'NO') . "\n";
+    echo 'Current Page: ' . basename($_SERVER['PHP_SELF']) . "\n";
+    echo 'Can Access: ' . (canAccessPage(basename($_SERVER['PHP_SELF'])) ? 'YES' : 'NO') . "\n";
+    echo "\nPublic Pages:\n";
+    foreach (getPublicPages() as $page) {
+        echo "  - $page\n";
     }
-}
-
-/**
- * Marca primeiro pagamento como confirmado
- * Chamado pelo webhook após confirmação
- */
-function confirmFirstPayment($store_id) {
-    global $pdo;
-    
-    try {
-        $stmt = $pdo->prepare("
-            UPDATE stores
-            SET 
-                first_payment_confirmed = 1,
-                status = 'active',
-                activated_at = NOW()
-            WHERE id = ?
-        ");
-        
-        return $stmt->execute([$store_id]);
-    } catch (Exception $e) {
-        error_log("Error confirming first payment: " . $e->getMessage());
-        return false;
-    }
-}
-
-/**
- * Retorna mensagem amigável baseada no nível de acesso
- */
-function getAccessLevelMessage($accessLevel = null) {
-    if ($accessLevel === null) {
-        $accessLevel = getAccessLevel();
-    }
-    
-    $messages = [
-        'restricted' => [
-            'title' => 'Aguardando Pagamento',
-            'description' => 'Complete seu pagamento para desbloquear todas as funcionalidades.',
-            'icon' => 'clock',
-            'color' => 'yellow'
-        ],
-        'full' => [
-            'title' => 'Acesso Total',
-            'description' => 'Todos os recursos estão disponíveis.',
-            'icon' => 'check-circle',
-            'color' => 'green'
-        ],
-        'suspended' => [
-            'title' => 'Conta Suspensa',
-            'description' => 'Entre em contato com o suporte.',
-            'icon' => 'x-circle',
-            'color' => 'red'
-        ]
-    ];
-    
-    return $messages[$accessLevel] ?? null;
-}
-
-/**
- * Retorna informações sobre features bloqueadas
- */
-function getBlockedFeaturesInfo() {
-    return [
-        'products' => [
-            'name' => 'Gerenciar Produtos',
-            'description' => 'Crie e gerencie produtos da sua loja',
-            'icon' => 'package'
-        ],
-        'customize' => [
-            'name' => 'Personalização',
-            'description' => 'Customize cores, logo e design',
-            'icon' => 'palette'
-        ],
-        'servers' => [
-            'name' => 'Servidores',
-            'description' => 'Configure credenciais e plugin',
-            'icon' => 'server'
-        ],
-        'integrations' => [
-            'name' => 'Integrações',
-            'description' => 'Gateway de pagamento e APIs',
-            'icon' => 'plug'
-        ],
-        'settings' => [
-            'name' => 'Configurações',
-            'description' => 'Ajustes gerais da plataforma',
-            'icon' => 'settings'
-        ]
-    ];
+    echo '</pre>';
+    echo '</div>';
 }

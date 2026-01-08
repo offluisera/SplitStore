@@ -1,16 +1,9 @@
 <?php
 /**
  * ============================================
- * SPLITSTORE - LOJA FRONTEND V2.0 COMPLETA
+ * SPLITSTORE - LOJA FRONTEND V3.0 COMPLETA
  * ============================================
- * stores/[nome-da-loja]/index.php
- * 
- * Recursos:
- * - Header com menu e busca
- * - Sistema de categorias
- * - Footer completo
- * - Widgets Discord/Twitter
- * - Design moderno e responsivo
+ * Com mural de notícias integrado
  */
 
 ini_set('display_errors', 0);
@@ -53,6 +46,16 @@ try {
     if (!$store) {
         die("Loja não encontrada ou inativa.");
     }
+    
+    // Busca notícias publicadas (últimas 3)
+    $stmt = $pdo->prepare("
+        SELECT * FROM news 
+        WHERE store_id = ? AND status = 'published'
+        ORDER BY published_at DESC, created_at DESC
+        LIMIT 3
+    ");
+    $stmt->execute([$store['id']]);
+    $news = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     // Busca categorias
     $stmt = $pdo->prepare("
@@ -98,6 +101,23 @@ $accentColor = $store['accent_color'] ?? '#ef4444';
 
 function formatMoney($val) { 
     return 'R$ ' . number_format((float)$val, 2, ',', '.'); 
+}
+
+function truncateText($text, $length = 150) {
+    if (strlen($text) <= $length) return $text;
+    return substr($text, 0, $length) . '...';
+}
+
+function timeAgo($datetime) {
+    $time = strtotime($datetime);
+    $diff = time() - $time;
+    
+    if ($diff < 60) return 'agora mesmo';
+    if ($diff < 3600) return floor($diff / 60) . ' min atrás';
+    if ($diff < 86400) return floor($diff / 3600) . 'h atrás';
+    if ($diff < 604800) return floor($diff / 86400) . 'd atrás';
+    
+    return date('d/m/Y', $time);
 }
 ?>
 <!DOCTYPE html>
@@ -147,7 +167,7 @@ function formatMoney($val) {
             border-bottom: 1px solid rgba(255, 255, 255, 0.1); 
         }
         
-        .product-card { 
+        .product-card, .news-card { 
             transition: all 0.3s ease; 
         }
         
@@ -156,17 +176,17 @@ function formatMoney($val) {
             border-color: <?= $primaryColor ?>;
             box-shadow: 0 20px 60px -20px <?= $primaryColor ?>60; 
         }
+
+        .news-card:hover {
+            transform: translateY(-4px);
+            border-color: <?= $accentColor ?>60;
+        }
         
         .category-chip {
             transition: all 0.2s ease;
         }
         
-        .category-chip:hover {
-            background: <?= $primaryColor ?>;
-            color: white;
-        }
-        
-        .category-chip.active {
+        .category-chip:hover, .category-chip.active {
             background: <?= $primaryColor ?>;
             color: white;
         }
@@ -176,16 +196,16 @@ function formatMoney($val) {
         ::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.02); }
         ::-webkit-scrollbar-thumb { background: <?= $primaryColor ?>; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: <?= $accentColor ?>; }
+
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
 <body class="bg-secondary min-h-screen">
 
-    <!-- ============================================
-         HEADER COMPLETO
-         ============================================ -->
+    <!-- HEADER -->
     <header class="fixed top-0 w-full z-50 glass-strong">
         <div class="max-w-7xl mx-auto px-6">
-            <!-- Top Bar -->
             <div class="flex items-center justify-between h-20">
                 
                 <!-- Logo -->
@@ -209,14 +229,14 @@ function formatMoney($val) {
 
                 <!-- Desktop Menu -->
                 <nav class="hidden lg:flex items-center gap-8">
+                    <a href="#noticias" class="text-sm font-bold uppercase tracking-wider text-zinc-400 hover:text-white transition">
+                        Notícias
+                    </a>
                     <a href="#produtos" class="text-sm font-bold uppercase tracking-wider text-zinc-400 hover:text-white transition">
                         Produtos
                     </a>
                     <a href="#categorias" class="text-sm font-bold uppercase tracking-wider text-zinc-400 hover:text-white transition">
                         Categorias
-                    </a>
-                    <a href="#sobre" class="text-sm font-bold uppercase tracking-wider text-zinc-400 hover:text-white transition">
-                        Sobre
                     </a>
                     <a href="#contato" class="text-sm font-bold uppercase tracking-wider text-zinc-400 hover:text-white transition">
                         Contato
@@ -225,25 +245,22 @@ function formatMoney($val) {
 
                 <!-- Actions -->
                 <div class="flex items-center gap-3">
-                    <!-- Busca -->
                     <button onclick="toggleSearch()" class="w-10 h-10 glass rounded-xl flex items-center justify-center hover:bg-white/10 transition">
                         <i data-lucide="search" class="w-5 h-5"></i>
                     </button>
                     
-                    <!-- Carrinho -->
                     <button onclick="toggleCart()" class="relative w-10 h-10 glass rounded-xl flex items-center justify-center hover:bg-white/10 transition">
                         <i data-lucide="shopping-cart" class="w-5 h-5"></i>
                         <span id="cartBadge" class="absolute -top-1 -right-1 bg-primary text-white text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-full opacity-0">0</span>
                     </button>
                     
-                    <!-- Menu Mobile -->
                     <button onclick="toggleMobileMenu()" class="lg:hidden w-10 h-10 glass rounded-xl flex items-center justify-center">
                         <i data-lucide="menu" class="w-5 h-5"></i>
                     </button>
                 </div>
             </div>
 
-            <!-- Search Bar (Hidden by default) -->
+            <!-- Search Bar -->
             <div id="searchBar" class="hidden pb-4 animate-in slide-in-from-top">
                 <form method="GET" class="relative">
                     <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500"></i>
@@ -262,25 +279,23 @@ function formatMoney($val) {
         <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" onclick="toggleMobileMenu()"></div>
         <div class="absolute right-0 top-0 h-full w-80 bg-secondary border-l border-white/10 p-6">
             <nav class="flex flex-col gap-4 mt-20">
-                <a href="#produtos" class="text-sm font-bold uppercase tracking-wider text-zinc-400 hover:text-white transition py-3 border-b border-white/5">
+                <a href="#noticias" onclick="toggleMobileMenu()" class="text-sm font-bold uppercase tracking-wider text-zinc-400 hover:text-white transition py-3 border-b border-white/5">
+                    Notícias
+                </a>
+                <a href="#produtos" onclick="toggleMobileMenu()" class="text-sm font-bold uppercase tracking-wider text-zinc-400 hover:text-white transition py-3 border-b border-white/5">
                     Produtos
                 </a>
-                <a href="#categorias" class="text-sm font-bold uppercase tracking-wider text-zinc-400 hover:text-white transition py-3 border-b border-white/5">
+                <a href="#categorias" onclick="toggleMobileMenu()" class="text-sm font-bold uppercase tracking-wider text-zinc-400 hover:text-white transition py-3 border-b border-white/5">
                     Categorias
                 </a>
-                <a href="#sobre" class="text-sm font-bold uppercase tracking-wider text-zinc-400 hover:text-white transition py-3 border-b border-white/5">
-                    Sobre
-                </a>
-                <a href="#contato" class="text-sm font-bold uppercase tracking-wider text-zinc-400 hover:text-white transition py-3 border-b border-white/5">
+                <a href="#contato" onclick="toggleMobileMenu()" class="text-sm font-bold uppercase tracking-wider text-zinc-400 hover:text-white transition py-3 border-b border-white/5">
                     Contato
                 </a>
             </nav>
         </div>
     </div>
 
-    <!-- ============================================
-         HERO SECTION
-         ============================================ -->
+    <!-- HERO SECTION -->
     <section class="pt-32 pb-16 px-6">
         <div class="max-w-7xl mx-auto">
             <div class="text-center mb-16">
@@ -294,31 +309,111 @@ function formatMoney($val) {
                     <?= htmlspecialchars($store['store_description'] ?? 'Bem-vindo à nossa loja!') ?>
                 </p>
             </div>
-
-            <!-- Filtro de Categorias -->
-            <?php if (!empty($categories)): ?>
-            <div id="categorias" class="mb-12">
-                <div class="flex items-center gap-3 overflow-x-auto pb-4 scrollbar-hide">
-                    <a href="?" class="category-chip glass px-6 py-3 rounded-full text-xs font-black uppercase tracking-wider whitespace-nowrap <?= empty($category_filter) ? 'active' : '' ?>">
-                        Todos
-                    </a>
-                    <?php foreach ($categories as $cat): ?>
-                    <a href="?category=<?= $cat['id'] ?>" class="category-chip glass px-6 py-3 rounded-full text-xs font-black uppercase tracking-wider whitespace-nowrap flex items-center gap-2 <?= $category_filter == $cat['id'] ? 'active' : '' ?>">
-                        <?php if (!empty($cat['icon'])): ?>
-                        <i data-lucide="<?= htmlspecialchars($cat['icon']) ?>" class="w-4 h-4"></i>
-                        <?php endif; ?>
-                        <?= htmlspecialchars($cat['name']) ?>
-                    </a>
-                    <?php endforeach; ?>
-                </div>
-            </div>
-            <?php endif; ?>
         </div>
     </section>
 
     <!-- ============================================
-         PRODUTOS
+         MURAL DE NOTÍCIAS
          ============================================ -->
+    <?php if (!empty($news)): ?>
+    <section id="noticias" class="px-6 pb-16">
+        <div class="max-w-7xl mx-auto">
+            
+            <!-- Header Section -->
+            <div class="flex items-center justify-between mb-8">
+                <div>
+                    <h2 class="text-3xl font-black uppercase tracking-tight mb-2">
+                        Últimas <span class="text-primary">Notícias</span>
+                    </h2>
+                    <p class="text-zinc-500 text-sm">Fique por dentro das novidades</p>
+                </div>
+                <div class="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
+                    <i data-lucide="newspaper" class="w-6 h-6 text-primary"></i>
+                </div>
+            </div>
+
+            <!-- News Grid -->
+            <div class="grid md:grid-cols-3 gap-6">
+                <?php foreach ($news as $article): ?>
+                <article class="news-card glass rounded-2xl overflow-hidden border border-white/5 group">
+                    
+                    <!-- Imagem -->
+                    <div class="relative aspect-video bg-zinc-900 overflow-hidden">
+                        <?php if (!empty($article['image_url'])): ?>
+                            <img src="<?= htmlspecialchars($article['image_url']) ?>" 
+                                 class="w-full h-full object-cover transition duration-700 group-hover:scale-110" 
+                                 alt="<?= htmlspecialchars($article['title']) ?>">
+                        <?php else: ?>
+                            <div class="w-full h-full flex items-center justify-center">
+                                <i data-lucide="file-text" class="w-16 h-16 text-zinc-700"></i>
+                            </div>
+                        <?php endif; ?>
+                        
+                        <!-- Badge Novo -->
+                        <?php if (strtotime($article['published_at'] ?? $article['created_at']) > strtotime('-3 days')): ?>
+                        <div class="absolute top-4 right-4 px-3 py-1.5 rounded-lg bg-primary text-white text-[10px] font-black uppercase shadow-lg">
+                            Novo
+                        </div>
+                        <?php endif; ?>
+                    </div>
+
+                    <!-- Conteúdo -->
+                    <div class="p-6">
+                        <div class="flex items-center gap-3 mb-4 text-xs text-zinc-600">
+                            <div class="flex items-center gap-1.5">
+                                <i data-lucide="user" class="w-3 h-3"></i>
+                                <span><?= htmlspecialchars($article['author'] ?? 'Admin') ?></span>
+                            </div>
+                            <span>•</span>
+                            <div class="flex items-center gap-1.5">
+                                <i data-lucide="clock" class="w-3 h-3"></i>
+                                <span><?= timeAgo($article['published_at'] ?? $article['created_at']) ?></span>
+                            </div>
+                        </div>
+
+                        <h3 class="text-lg font-black uppercase tracking-tight mb-3 line-clamp-2 leading-snug">
+                            <?= htmlspecialchars($article['title']) ?>
+                        </h3>
+
+                        <p class="text-sm text-zinc-500 line-clamp-3 leading-relaxed mb-4">
+                            <?= htmlspecialchars(truncateText($article['content'], 120)) ?>
+                        </p>
+
+                        <button onclick="showNewsModal(<?= htmlspecialchars(json_encode($article), ENT_QUOTES) ?>)" 
+                                class="inline-flex items-center gap-2 text-xs font-black uppercase text-primary hover:underline">
+                            Ler Mais 
+                            <i data-lucide="arrow-right" class="w-3 h-3"></i>
+                        </button>
+                    </div>
+                </article>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    </section>
+    <?php endif; ?>
+
+    <!-- Filtro de Categorias -->
+    <?php if (!empty($categories)): ?>
+    <section id="categorias" class="px-6 pb-12">
+        <div class="max-w-7xl mx-auto">
+            <div class="flex items-center gap-3 overflow-x-auto pb-4 scrollbar-hide">
+                <a href="?" class="category-chip glass px-6 py-3 rounded-full text-xs font-black uppercase tracking-wider whitespace-nowrap <?= empty($category_filter) ? 'active' : '' ?>">
+                    Todos
+                </a>
+                <?php foreach ($categories as $cat): ?>
+                <a href="?category=<?= $cat['id'] ?>" class="category-chip glass px-6 py-3 rounded-full text-xs font-black uppercase tracking-wider whitespace-nowrap flex items-center gap-2 <?= $category_filter == $cat['id'] ? 'active' : '' ?>">
+                    <?php if (!empty($cat['icon'])): ?>
+                    <i data-lucide="<?= htmlspecialchars($cat['icon']) ?>" class="w-4 h-4"></i>
+                    <?php endif; ?>
+                    <?= htmlspecialchars($cat['name']) ?>
+                </a>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    </section>
+    <?php endif; ?>
+
+    <!-- PRODUTOS -->
     <section id="produtos" class="px-6 pb-24">
         <div class="max-w-7xl mx-auto">
             
@@ -368,7 +463,7 @@ function formatMoney($val) {
                         <!-- Badge Estoque -->
                         <?php if (isset($product['stock']) && $product['stock'] !== null): ?>
                         <div class="absolute top-3 right-3 px-3 py-1 rounded-lg text-[10px] font-black uppercase <?= $product['stock'] > 0 ? 'bg-green-500/20 text-green-500 border border-green-500/30' : 'bg-red-500/20 text-red-500 border border-red-500/30' ?>">
-                            <?= $product['stock'] > 0 ? $product['stock'] . ' unidades' : 'Esgotado' ?>
+                            <?= $product['stock'] > 0 ? $product['stock'] . ' un.' : 'Esgotado' ?>
                         </div>
                         <?php endif; ?>
                     </div>
@@ -403,9 +498,7 @@ function formatMoney($val) {
         </div>
     </section>
 
-    <!-- ============================================
-         WIDGETS SECTION
-         ============================================ -->
+    <!-- WIDGETS SECTION -->
     <section class="px-6 pb-24">
         <div class="max-w-7xl mx-auto">
             <div class="grid md:grid-cols-2 gap-8">
@@ -459,9 +552,7 @@ function formatMoney($val) {
         </div>
     </section>
 
-    <!-- ============================================
-         FOOTER COMPLETO
-         ============================================ -->
+    <!-- FOOTER -->
     <footer class="border-t border-white/5 bg-black/20">
         <div class="max-w-7xl mx-auto px-6 py-16">
             <div class="grid md:grid-cols-4 gap-12 mb-12">
@@ -504,9 +595,9 @@ function formatMoney($val) {
                 <div>
                     <h4 class="text-sm font-black uppercase tracking-wider mb-4">Links Rápidos</h4>
                     <ul class="space-y-3">
+                        <li><a href="#noticias" class="text-sm text-zinc-500 hover:text-white transition">Notícias</a></li>
                         <li><a href="#produtos" class="text-sm text-zinc-500 hover:text-white transition">Produtos</a></li>
                         <li><a href="#categorias" class="text-sm text-zinc-500 hover:text-white transition">Categorias</a></li>
-                        <li><a href="#sobre" class="text-sm text-zinc-500 hover:text-white transition">Sobre Nós</a></li>
                         <li><a href="#contato" class="text-sm text-zinc-500 hover:text-white transition">Contato</a></li>
                     </ul>
                 </div>
@@ -536,9 +627,17 @@ function formatMoney($val) {
         </div>
     </footer>
 
-    <!-- ============================================
-         MODAL CARRINHO
-         ============================================ -->
+    <!-- Modal: Notícia Completa -->
+    <div id="newsModal" class="fixed inset-0 z-[100] hidden">
+        <div class="absolute inset-0 bg-black/90 backdrop-blur-sm" onclick="closeNewsModal()"></div>
+        <div class="absolute inset-0 flex items-center justify-center p-4 overflow-y-auto">
+            <div class="glass w-full max-w-3xl rounded-3xl border border-white/10 my-8">
+                <div id="newsModalContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Carrinho -->
     <div id="cartModal" class="fixed inset-0 z-[100] hidden">
         <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" onclick="toggleCart()"></div>
         <div class="absolute right-0 top-0 h-full w-full max-w-md bg-secondary border-l border-white/10 p-6 flex flex-col shadow-2xl">
@@ -583,6 +682,52 @@ function formatMoney($val) {
         
         function toggleMobileMenu() {
             document.getElementById('mobileMenu').classList.toggle('hidden');
+        }
+        
+        function showNewsModal(article) {
+            const modal = document.getElementById('newsModal');
+            const content = document.getElementById('newsModalContent');
+            
+            content.innerHTML = `
+                <div class="relative">
+                    ${article.image_url ? `
+                        <div class="aspect-video overflow-hidden rounded-t-3xl">
+                            <img src="${article.image_url}" class="w-full h-full object-cover" alt="${article.title}">
+                        </div>
+                    ` : ''}
+                    
+                    <div class="p-8">
+                        <button onclick="closeNewsModal()" class="absolute top-6 right-6 w-10 h-10 bg-black/50 backdrop-blur-sm rounded-xl flex items-center justify-center hover:bg-black/70 transition z-10">
+                            <i data-lucide="x" class="w-5 h-5"></i>
+                        </button>
+                        
+                        <div class="flex items-center gap-4 mb-6 text-xs text-zinc-500">
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="user" class="w-3 h-3"></i>
+                                <span>${article.author || 'Admin'}</span>
+                            </div>
+                            <span>•</span>
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="calendar" class="w-3 h-3"></i>
+                                <span>${new Date(article.published_at || article.created_at).toLocaleDateString('pt-BR')}</span>
+                            </div>
+                        </div>
+                        
+                        <h2 class="text-3xl font-black uppercase tracking-tight mb-6">${article.title}</h2>
+                        
+                        <div class="prose prose-invert prose-lg max-w-none">
+                            <p class="text-zinc-400 leading-relaxed whitespace-pre-line">${article.content}</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            modal.classList.remove('hidden');
+            lucide.createIcons();
+        }
+        
+        function closeNewsModal() {
+            document.getElementById('newsModal').classList.add('hidden');
         }
         
         function updateCart() {

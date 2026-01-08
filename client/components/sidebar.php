@@ -1,13 +1,9 @@
 <?php
 /**
  * ============================================
- * SIDEBAR COM CONTROLE DE ACESSO - ATUALIZADA
+ * SIDEBAR COM CONTROLE DE ACESSO - CORRIGIDA
  * ============================================
- * client/components/sidebar.php
  */
-
-// Inclui auth guard
-require_once __DIR__ . '/../../includes/auth_guard.php';
 
 // Verifica variáveis da sessão
 $store_name = $_SESSION['store_name'] ?? 'Minha Loja';
@@ -20,6 +16,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
 // Nível de acesso
 $accessLevel = getAccessLevel();
 $isRestricted = ($accessLevel === 'restricted');
+$isSuspended = ($accessLevel === 'suspended');
 
 // Busca métricas APENAS DA LOJA DO USUÁRIO
 $quick_stats = ['vendas_mes' => 0];
@@ -131,7 +128,7 @@ $menuItems = [
         'page' => 'settings.php',
         'icon' => 'settings',
         'label' => 'Configurações',
-        'restricted' => true
+        'restricted' => false // Sempre acessível
     ]
 ];
 ?>
@@ -187,8 +184,8 @@ $menuItems = [
                 <!-- Link do Menu -->
                 <?php 
                 $isActive = ($current_page == $item['page']);
-                $isBlocked = ($isRestricted && $item['restricted']);
                 $canAccess = canAccessPage($item['page']);
+                $isBlocked = !$canAccess;
                 ?>
                 
                 <a href="<?= $canAccess ? $item['page'] : '#' ?>" 
