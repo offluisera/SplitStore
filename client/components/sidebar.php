@@ -1,7 +1,7 @@
 <?php
 /**
  * ============================================
- * SIDEBAR COM CONTROLE DE ACESSO
+ * SIDEBAR COM CONTROLE DE ACESSO - ATUALIZADA
  * ============================================
  * client/components/sidebar.php
  */
@@ -81,6 +81,18 @@ $menuItems = [
         'restricted' => true
     ],
     [
+        'page' => 'clientes.php',
+        'icon' => 'users',
+        'label' => 'Clientes',
+        'restricted' => true
+    ],
+    [
+        'page' => 'descontos.php',
+        'icon' => 'ticket',
+        'label' => 'Cupons',
+        'restricted' => true
+    ],
+    [
         'type' => 'divider',
         'label' => 'CONFIGURAÇÕES',
         'restricted' => false
@@ -98,9 +110,21 @@ $menuItems = [
         'restricted' => true
     ],
     [
+        'page' => 'pagamentos.php',
+        'icon' => 'credit-card',
+        'label' => 'Pagamentos',
+        'restricted' => true
+    ],
+    [
         'page' => 'integrations.php',
         'icon' => 'plug',
         'label' => 'Integrações',
+        'restricted' => true
+    ],
+    [
+        'page' => 'contatos.php',
+        'icon' => 'mail',
+        'label' => 'Contatos',
         'restricted' => true
     ],
     [
@@ -148,7 +172,7 @@ $menuItems = [
     </div>
 
     <!-- Menu -->
-    <nav class="flex-1 px-6 space-y-1 overflow-y-auto">
+    <nav class="flex-1 px-6 space-y-1 overflow-y-auto scrollbar-hide">
         <?php foreach ($menuItems as $item): ?>
             
             <?php if (isset($item['type']) && $item['type'] === 'divider'): ?>
@@ -258,6 +282,15 @@ $menuItems = [
 
 .animate-in {
     animation: animate-in 0.3s ease-out;
+}
+
+/* Scrollbar customizada */
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
+}
+.scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
 }
 </style>
 
