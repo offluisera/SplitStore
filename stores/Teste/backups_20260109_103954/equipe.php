@@ -163,8 +163,6 @@ $is_logged = isset($_SESSION['store_user_logged']) && $_SESSION['store_user_logg
 
     </main>
 
-    <?php $theme->renderScripts(); // ← Theme Engine JS ?>
-
     <script>lucide.createIcons();</script>
 </body>
 </html>

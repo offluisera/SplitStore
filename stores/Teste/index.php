@@ -1,13 +1,13 @@
 <?php
 /**
  * ============================================
- * SPLITSTORE - HOME V3.0 ULTRA
+ * SPLITSTORE - HOME V3.1 COM THEME ENGINE
  * ============================================
- * Design moderno Dark/Red com produtos e notícias
  */
 
 session_start();
 require_once '../../includes/db.php';
+require_once '../../includes/theme_engine.php'; // ← THEME ENGINE
 
 $store_slug = basename(dirname(__FILE__));
 
@@ -23,6 +23,9 @@ try {
     $store = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if (!$store) die("Loja não encontrada.");
+    
+    // Inicializa Theme Engine
+    $theme = new ThemeEngine($pdo, $store['id']);
     
     // Busca menu customizado
     $stmt = $pdo->prepare("
@@ -126,7 +129,8 @@ $is_logged = isset($_SESSION['store_user_logged']) && $_SESSION['store_user_logg
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= htmlspecialchars($store['store_title'] ?? $store['store_name']) ?></title>
     
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap" rel="stylesheet">
+    <?php $theme->renderHead(); // ← Theme Engine CSS + Fonts ?>
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -143,12 +147,6 @@ $is_logged = isset($_SESSION['store_user_logged']) && $_SESSION['store_user_logg
     <script src="https://unpkg.com/lucide@latest"></script>
     
     <style>
-        body { 
-            background: <?= $secondaryColor ?>; 
-            color: white;
-            font-family: 'Inter', sans-serif;
-        }
-        
         .glass { 
             background: rgba(255, 255, 255, 0.02); 
             backdrop-filter: blur(20px); 
@@ -189,63 +187,8 @@ $is_logged = isset($_SESSION['store_user_logged']) && $_SESSION['store_user_logg
 </head>
 <body>
 
-    <!-- HEADER FIXO -->
-    <header class="fixed top-0 w-full z-50 glass-strong">
-        <div class="max-w-7xl mx-auto px-6">
-            <div class="flex items-center justify-between h-20">
-                
-                <!-- Logo -->
-                <a href="index.php" class="flex items-center gap-3 group">
-                    <?php if (!empty($store['logo_url'])): ?>
-                        <img src="<?= htmlspecialchars($store['logo_url']) ?>" class="h-10 object-contain group-hover:scale-110 transition">
-                    <?php else: ?>
-                        <div class="w-12 h-12 bg-gradient-to-br from-primary to-red-600 rounded-xl flex items-center justify-center font-black shadow-lg shadow-primary/30 group-hover:scale-110 transition">
-                            <?= strtoupper(substr($store['store_name'], 0, 1)) ?>
-                        </div>
-                    <?php endif; ?>
-                    <div class="hidden md:block">
-                        <div class="font-black text-lg uppercase tracking-tight group-hover:text-primary transition">
-                            <?= htmlspecialchars($store['store_name']) ?>
-                        </div>
-                        <div class="text-[9px] text-zinc-600 font-bold uppercase tracking-widest">
-                            Servidor Minecraft
-                        </div>
-                    </div>
-                </a>
-
-                <!-- Menu Desktop -->
-                <nav class="hidden lg:flex items-center gap-6">
-                    <?php foreach ($menu_items as $item): ?>
-                    <a href="<?= htmlspecialchars($item['url']) ?>" 
-                       class="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-400 hover:text-white transition group">
-                        <?php if ($item['icon']): ?>
-                        <i data-lucide="<?= htmlspecialchars($item['icon']) ?>" class="w-4 h-4 group-hover:text-primary transition"></i>
-                        <?php endif; ?>
-                        <span class="group-hover:text-primary transition"><?= htmlspecialchars($item['label']) ?></span>
-                    </a>
-                    <?php endforeach; ?>
-                </nav>
-
-                <!-- Actions -->
-                <div class="flex items-center gap-3">
-                    <?php if ($is_logged): ?>
-                        <a href="auth.php?action=logout" class="flex items-center gap-2 glass px-4 py-2 rounded-xl hover:bg-white/10 transition">
-                            <img src="<?= htmlspecialchars($_SESSION['store_user_skin']) ?>" class="w-6 h-6 rounded-lg">
-                            <span class="hidden md:block text-xs font-bold"><?= htmlspecialchars($_SESSION['store_user_nick']) ?></span>
-                        </a>
-                    <?php else: ?>
-                        <a href="auth.php" class="bg-gradient-to-r from-primary to-red-600 hover:brightness-110 px-6 py-2 rounded-xl text-xs font-black uppercase transition shadow-lg shadow-primary/30">
-                            Login
-                        </a>
-                    <?php endif; ?>
-                    
-                    <button onclick="toggleMobileMenu()" class="lg:hidden w-10 h-10 glass rounded-xl flex items-center justify-center hover:bg-white/10 transition">
-                        <i data-lucide="menu" class="w-5 h-5"></i>
-                    </button>
-                </div>
-            </div>
-        </div>
-    </header>
+    <!-- HEADER -->
+    <?php include __DIR__ . '/components/header.php'; ?>
 
     <!-- Mobile Menu -->
     <div id="mobileMenu" class="fixed inset-0 z-40 hidden lg:hidden">
@@ -583,6 +526,8 @@ $is_logged = isset($_SESSION['store_user_logged']) && $_SESSION['store_user_logg
             </div>
         </div>
     </footer>
+
+    <?php $theme->renderScripts(); // ← Theme Engine JS ?>
 
     <script>
         lucide.createIcons();

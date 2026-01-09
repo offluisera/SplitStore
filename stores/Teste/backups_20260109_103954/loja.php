@@ -7,7 +7,6 @@
 
 session_start();
 require_once '../../includes/db.php';
-require_once '../../includes/theme_engine.php'; // ← Theme Engine
 
 $store_slug = basename(dirname(__FILE__));
 $category_filter = isset($_GET['categoria']) ? (int)$_GET['categoria'] : null;
@@ -25,18 +24,6 @@ try {
     $store = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if (!$store) die("Loja não encontrada.");
-    
-    // Inicializa Theme Engine
-    $theme = new ThemeEngine($pdo, $store['id']);
-    
-    // Busca menu para header
-    $stmt = $pdo->prepare("
-        SELECT * FROM store_menu 
-        WHERE store_id = ? AND is_enabled = 1
-        ORDER BY order_position ASC
-    ");
-    $stmt->execute([$store['id']]);
-    $menu_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     // Menu
     $stmt = $pdo->prepare("
@@ -105,10 +92,7 @@ $is_logged = isset($_SESSION['store_user_logged']) && $_SESSION['store_user_logg
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Loja | <?= htmlspecialchars($store['store_name']) ?></title>
     
-    <?php $theme->renderHead(); // ← Theme Engine CSS + Fonts ?>
-    
-    
-    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -155,7 +139,54 @@ $is_logged = isset($_SESSION['store_user_logged']) && $_SESSION['store_user_logg
 <body>
 
     <!-- HEADER -->
-    <?php include __DIR__ . '/components/header.php'; ?>
+    <header class="sticky top-0 z-50 glass-strong border-b border-white/10">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="flex items-center justify-between h-20">
+                <a href="index.php" class="flex items-center gap-3 hover:opacity-80 transition">
+                    <?php if (!empty($store['logo_url'])): ?>
+                        <img src="<?= htmlspecialchars($store['logo_url']) ?>" class="h-10 object-contain">
+                    <?php else: ?>
+                        <div class="w-12 h-12 bg-gradient-to-br from-primary to-red-600 rounded-xl flex items-center justify-center font-black shadow-lg">
+                            <?= strtoupper(substr($store['store_name'], 0, 1)) ?>
+                        </div>
+                    <?php endif; ?>
+                    <div class="hidden md:block">
+                        <div class="font-black text-lg uppercase tracking-tight">
+                            <?= htmlspecialchars($store['store_name']) ?>
+                        </div>
+                        <div class="text-[9px] text-zinc-600 font-bold uppercase tracking-widest">
+                            Loja Oficial
+                        </div>
+                    </div>
+                </a>
+                
+                <nav class="hidden lg:flex items-center gap-6">
+                    <?php foreach ($menu_items as $item): ?>
+                    <a href="<?= htmlspecialchars($item['url']) ?>" 
+                       class="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-400 hover:text-white transition <?= basename($_SERVER['PHP_SELF']) == basename($item['url']) ? 'text-primary' : '' ?>">
+                        <?php if ($item['icon']): ?>
+                        <i data-lucide="<?= htmlspecialchars($item['icon']) ?>" class="w-4 h-4"></i>
+                        <?php endif; ?>
+                        <?= htmlspecialchars($item['label']) ?>
+                    </a>
+                    <?php endforeach; ?>
+                </nav>
+                
+                <div class="flex items-center gap-3">
+                    <?php if ($is_logged): ?>
+                        <a href="auth.php?action=logout" class="flex items-center gap-2 glass px-4 py-2 rounded-xl hover:bg-white/10 transition">
+                            <img src="<?= htmlspecialchars($_SESSION['store_user_skin']) ?>" class="w-6 h-6 rounded-lg">
+                            <span class="hidden md:block text-xs font-bold"><?= htmlspecialchars($_SESSION['store_user_nick']) ?></span>
+                        </a>
+                    <?php else: ?>
+                        <a href="auth.php" class="bg-gradient-to-r from-primary to-red-600 hover:brightness-110 px-6 py-2 rounded-xl text-xs font-black uppercase transition shadow-lg">
+                            Login
+                        </a>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+    </header>
 
     <main class="max-w-7xl mx-auto px-6 py-12">
         
@@ -349,8 +380,6 @@ $is_logged = isset($_SESSION['store_user_logged']) && $_SESSION['store_user_logg
             </div>
         </div>
     </footer>
-
-    <?php $theme->renderScripts(); // ← Theme Engine JS ?>
 
     <script>
         lucide.createIcons();

@@ -148,8 +148,6 @@ $primaryColor = $store['primary_color'] ?? '#dc2626';
 
     </main>
 
-    <?php $theme->renderScripts(); // ← Theme Engine JS ?>
-
     <script>lucide.createIcons();</script>
 </body>
 </html>

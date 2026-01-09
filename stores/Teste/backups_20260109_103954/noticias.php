@@ -7,7 +7,6 @@
 
 session_start();
 require_once '../../includes/db.php';
-require_once '../../includes/theme_engine.php'; // ← Theme Engine
 
 $store_slug = basename(dirname(__FILE__));
 $page = isset($_GET['p']) ? max(1, (int)$_GET['p']) : 1;
@@ -25,18 +24,6 @@ try {
     $store = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if (!$store) die("Loja não encontrada.");
-    
-    // Inicializa Theme Engine
-    $theme = new ThemeEngine($pdo, $store['id']);
-    
-    // Busca menu para header
-    $stmt = $pdo->prepare("
-        SELECT * FROM store_menu 
-        WHERE store_id = ? AND is_enabled = 1
-        ORDER BY order_position ASC
-    ");
-    $stmt->execute([$store['id']]);
-    $menu_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     // Menu
     $stmt = $pdo->prepare("
@@ -88,10 +75,7 @@ $is_logged = isset($_SESSION['store_user_logged']) && $_SESSION['store_user_logg
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Notícias | <?= htmlspecialchars($store['store_name']) ?></title>
     
-    <?php $theme->renderHead(); // ← Theme Engine CSS + Fonts ?>
-    
-    
-    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -244,8 +228,6 @@ $is_logged = isset($_SESSION['store_user_logged']) && $_SESSION['store_user_logg
         <?php endif; ?>
 
     </main>
-
-    <?php $theme->renderScripts(); // ← Theme Engine JS ?>
 
     <script>
         lucide.createIcons();
