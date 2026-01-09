@@ -83,10 +83,22 @@ $menuItems = [
         'label' => 'Clientes',
         'restricted' => true
     ],
+        [
+        'page' => 'usuarios.php',
+        'icon' => 'users',
+        'label' => 'Usuários',
+        'restricted' => true
+    ],
     [
         'page' => 'descontos.php',
         'icon' => 'ticket',
         'label' => 'Cupons',
+        'restricted' => true
+    ],
+    [
+        'page' => 'noticias.php',
+        'icon' => 'newspaper',
+        'label' => 'Notícias',
         'restricted' => true
     ],
     [

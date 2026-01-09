@@ -18,29 +18,22 @@ $store_name = $_SESSION['store_name'];
 $message = "";
 $messageType = "";
 
-// ========================================
-// FILTROS
-// ========================================
-$search = $_GET['search'] ?? '';
-$rank_filter = $_GET['rank'] ?? '';
-$order_by = $_GET['order_by'] ?? 'recent'; // recent, oldest, most_spent, most_active
-
-// ========================================
-// BANIR/DESBANIR USUÁRIO
-// ========================================
+// Banir/Desbanir usuário
 if (isset($_GET['toggle_ban']) && is_numeric($_GET['toggle_ban'])) {
-    $user_id = (int)$_GET['toggle_ban'];
-    
     try {
+        $user_id = (int)$_GET['toggle_ban'];
+        
+        // Busca status atual
         $stmt = $pdo->prepare("SELECT is_banned FROM store_users WHERE id = ? AND store_id = ?");
         $stmt->execute([$user_id, $store_id]);
         $user = $stmt->fetch();
         
         if ($user) {
             $new_status = $user['is_banned'] ? 0 : 1;
-            $pdo->prepare("UPDATE store_users SET is_banned = ? WHERE id = ?")->execute([$new_status, $user_id]);
+            $stmt = $pdo->prepare("UPDATE store_users SET is_banned = ? WHERE id = ? AND store_id = ?");
+            $stmt->execute([$new_status, $user_id, $store_id]);
             
-            header('Location: usuarios.php?success=' . ($new_status ? 'user_banned' : 'user_unbanned'));
+            header('Location: usuarios.php?success=' . ($new_status ? 'banned' : 'unbanned'));
             exit;
         }
     } catch (Exception $e) {
@@ -49,103 +42,100 @@ if (isset($_GET['toggle_ban']) && is_numeric($_GET['toggle_ban'])) {
     }
 }
 
-// ========================================
-// ATUALIZAR RANK
-// ========================================
+// Deletar usuário
+if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
+    try {
+        $stmt = $pdo->prepare("DELETE FROM store_users WHERE id = ? AND store_id = ?");
+        $stmt->execute([$_GET['delete'], $store_id]);
+        header('Location: usuarios.php?success=deleted');
+        exit;
+    } catch (Exception $e) {
+        $message = "Erro ao deletar: " . $e->getMessage();
+        $messageType = "error";
+    }
+}
+
+// Atualizar rank
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_rank') {
-    $user_id = (int)($_POST['user_id'] ?? 0);
-    $rank = trim($_POST['rank'] ?? 'Membro');
-    $rank_color = trim($_POST['rank_color'] ?? '#9CA3AF');
+    $user_id = (int)$_POST['user_id'];
+    $rank = trim($_POST['rank']);
+    $rank_color = trim($_POST['rank_color']);
     
     try {
-        $stmt = $pdo->prepare("UPDATE store_users SET rank = ?, rank_color = ? WHERE id = ? AND store_id = ?");
-        if ($stmt->execute([$rank, $rank_color, $user_id, $store_id])) {
-            header('Location: usuarios.php?success=rank_updated');
-            exit;
-        }
+        $stmt = $pdo->prepare("
+            UPDATE store_users 
+            SET rank = ?, rank_color = ? 
+            WHERE id = ? AND store_id = ?
+        ");
+        $stmt->execute([$rank, $rank_color, $user_id, $store_id]);
+        
+        header('Location: usuarios.php?success=rank_updated');
+        exit;
     } catch (Exception $e) {
-        $message = "Erro: " . $e->getMessage();
+        $message = "Erro ao atualizar rank: " . $e->getMessage();
         $messageType = "error";
     }
 }
 
-// ========================================
-// BUSCAR USUÁRIOS
-// ========================================
-$sql = "SELECT 
-            su.*,
-            COUNT(DISTINCT nc.id) as total_comments,
-            COUNT(DISTINCT p.id) as total_purchases_count,
-            COALESCE(SUM(CASE WHEN p.status = 'delivered' THEN p.amount ELSE 0 END), 0) as total_spent_sum
-        FROM store_users su
-        LEFT JOIN news_comments nc ON su.id = nc.user_id AND nc.is_deleted = 0
-        LEFT JOIN purchases p ON su.minecraft_uuid = p.player_uuid AND p.store_id = su.store_id
-        WHERE su.store_id = ?";
-
-$params = [$store_id];
-
-if (!empty($search)) {
-    $sql .= " AND (su.minecraft_nick LIKE ? OR su.email LIKE ?)";
-    $params[] = "%{$search}%";
-    $params[] = "%{$search}%";
-}
-
-if (!empty($rank_filter)) {
-    $sql .= " AND su.rank = ?";
-    $params[] = $rank_filter;
-}
-
-$sql .= " GROUP BY su.id";
-
-switch ($order_by) {
-    case 'oldest':
-        $sql .= " ORDER BY su.created_at ASC";
-        break;
-    case 'most_spent':
-        $sql .= " ORDER BY total_spent_sum DESC";
-        break;
-    case 'most_active':
-        $sql .= " ORDER BY total_comments DESC";
-        break;
-    case 'recent':
-    default:
-        $sql .= " ORDER BY su.created_at DESC";
-        break;
-}
-
+// Buscar usuários
 try {
+    $search = $_GET['search'] ?? '';
+    $filter = $_GET['filter'] ?? 'all';
+    
+    $sql = "SELECT * FROM store_users WHERE store_id = ?";
+    $params = [$store_id];
+    
+    if (!empty($search)) {
+        $sql .= " AND (minecraft_nick LIKE ? OR email LIKE ?)";
+        $params[] = "%{$search}%";
+        $params[] = "%{$search}%";
+    }
+    
+    if ($filter === 'banned') {
+        $sql .= " AND is_banned = 1";
+    } elseif ($filter === 'active') {
+        $sql .= " AND is_banned = 0";
+    }
+    
+    $sql .= " ORDER BY created_at DESC";
+    
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
-    $users = $stmt->fetchAll();
+    $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     // Estatísticas
-    $total_users = count($users);
-    $banned_users = count(array_filter($users, fn($u) => $u['is_banned']));
-    $total_revenue_from_users = array_sum(array_column($users, 'total_spent_sum'));
-    
-    // Buscar ranks únicos
-    $stmt = $pdo->prepare("SELECT DISTINCT rank FROM store_users WHERE store_id = ?");
-    $stmt->execute([$store_id]);
-    $ranks = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    $stats = $pdo->prepare("
+        SELECT 
+            COUNT(*) as total,
+            SUM(CASE WHEN is_banned = 0 THEN 1 ELSE 0 END) as active,
+            SUM(CASE WHEN is_banned = 1 THEN 1 ELSE 0 END) as banned,
+            SUM(total_purchases) as total_purchases,
+            SUM(total_spent) as total_spent
+        FROM store_users 
+        WHERE store_id = ?
+    ");
+    $stats->execute([$store_id]);
+    $stats = $stats->fetch(PDO::FETCH_ASSOC);
     
 } catch (Exception $e) {
     error_log("Users Error: " . $e->getMessage());
     $users = [];
-    $ranks = [];
+    $stats = ['total' => 0, 'active' => 0, 'banned' => 0, 'total_purchases' => 0, 'total_spent' => 0];
 }
 
 if (isset($_GET['success'])) {
     $messages = [
-        'user_banned' => 'Usuário banido com sucesso!',
-        'user_unbanned' => 'Ban removido com sucesso!',
-        'rank_updated' => 'Rank atualizado!'
+        'banned' => '✓ Usuário banido com sucesso!',
+        'unbanned' => '✓ Usuário desbanido!',
+        'deleted' => '✓ Usuário removido!',
+        'rank_updated' => '✓ Rank atualizado!'
     ];
     $message = $messages[$_GET['success']] ?? '';
     $messageType = "success";
 }
 
 function formatMoney($val) {
-    return 'R$ ' . number_format($val, 2, ',', '.');
+    return 'R$ ' . number_format((float)$val, 2, ',', '.');
 }
 ?>
 <!DOCTYPE html>
@@ -160,7 +150,7 @@ function formatMoney($val) {
         body { font-family: 'Inter', sans-serif; background: #000; color: white; }
         .glass { background: rgba(255, 255, 255, 0.02); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); }
         .user-card { transition: all 0.3s ease; }
-        .user-card:hover { transform: translateY(-2px); border-color: rgba(220, 38, 38, 0.3); }
+        .user-card:hover { transform: translateY(-4px); border-color: rgba(220, 38, 38, 0.3); }
     </style>
 </head>
 <body class="flex min-h-screen">
@@ -173,18 +163,26 @@ function formatMoney($val) {
         <header class="flex justify-between items-center mb-12">
             <div>
                 <h1 class="text-3xl font-black italic uppercase tracking-tighter">
-                    Usuários <span class="text-red-600">Cadastrados</span>
+                    Usuários da <span class="text-red-600">Loja</span>
                 </h1>
                 <p class="text-zinc-500 text-xs font-bold uppercase tracking-widest mt-1">
-                    Gerencie os usuários da sua loja
+                    Gerencie os clientes cadastrados
                 </p>
             </div>
             
-            <div class="flex gap-3">
-                <button onclick="exportUsers()" class="glass px-6 py-3 rounded-2xl hover:border-red-600/40 transition flex items-center gap-2">
-                    <i data-lucide="download" class="w-4 h-4 text-zinc-500"></i>
-                    <span class="text-xs font-black uppercase">Exportar</span>
-                </button>
+            <div class="flex items-center gap-3">
+                <div class="glass px-4 py-2 rounded-xl">
+                    <span class="text-[10px] text-zinc-600 font-bold uppercase block mb-0.5">Total</span>
+                    <span class="text-xl font-black"><?= $stats['total'] ?></span>
+                </div>
+                <div class="glass px-4 py-2 rounded-xl">
+                    <span class="text-[10px] text-green-600 font-bold uppercase block mb-0.5">Ativos</span>
+                    <span class="text-xl font-black text-green-500"><?= $stats['active'] ?></span>
+                </div>
+                <div class="glass px-4 py-2 rounded-xl">
+                    <span class="text-[10px] text-red-600 font-bold uppercase block mb-0.5">Banidos</span>
+                    <span class="text-xl font-black text-red-500"><?= $stats['banned'] ?></span>
+                </div>
             </div>
         </header>
 
@@ -195,150 +193,103 @@ function formatMoney($val) {
             </div>
         <?php endif; ?>
 
-        <!-- Estatísticas -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <div class="glass p-6 rounded-2xl">
-                <div class="flex items-center justify-between mb-3">
-                    <div class="w-10 h-10 bg-blue-600/10 rounded-xl flex items-center justify-center">
-                        <i data-lucide="users" class="w-5 h-5 text-blue-600"></i>
-                    </div>
-                </div>
-                <p class="text-zinc-600 text-[10px] font-black uppercase tracking-widest mb-2">Total Usuários</p>
-                <h3 class="text-3xl font-black"><?= $total_users ?></h3>
-            </div>
-
-            <div class="glass p-6 rounded-2xl">
-                <div class="flex items-center justify-between mb-3">
-                    <div class="w-10 h-10 bg-green-600/10 rounded-xl flex items-center justify-center">
-                        <i data-lucide="dollar-sign" class="w-5 h-5 text-green-600"></i>
-                    </div>
-                </div>
-                <p class="text-zinc-600 text-[10px] font-black uppercase tracking-widest mb-2">Receita Total</p>
-                <h3 class="text-3xl font-black text-green-500"><?= formatMoney($total_revenue_from_users) ?></h3>
-            </div>
-
-            <div class="glass p-6 rounded-2xl">
-                <div class="flex items-center justify-between mb-3">
-                    <div class="w-10 h-10 bg-purple-600/10 rounded-xl flex items-center justify-center">
-                        <i data-lucide="shield" class="w-5 h-5 text-purple-600"></i>
-                    </div>
-                </div>
-                <p class="text-zinc-600 text-[10px] font-black uppercase tracking-widest mb-2">Ranks Diferentes</p>
-                <h3 class="text-3xl font-black text-purple-500"><?= count($ranks) ?></h3>
-            </div>
-
-            <div class="glass p-6 rounded-2xl">
-                <div class="flex items-center justify-between mb-3">
-                    <div class="w-10 h-10 bg-red-600/10 rounded-xl flex items-center justify-center">
-                        <i data-lucide="user-x" class="w-5 h-5 text-red-600"></i>
-                    </div>
-                </div>
-                <p class="text-zinc-600 text-[10px] font-black uppercase tracking-widest mb-2">Usuários Banidos</p>
-                <h3 class="text-3xl font-black text-red-500"><?= $banned_users ?></h3>
-            </div>
-        </div>
-
-        <!-- Filtros -->
-        <div class="glass p-6 rounded-3xl mb-8">
-            <form method="GET" class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                
+        <!-- Filtros e Busca -->
+        <div class="glass rounded-2xl p-6 mb-8">
+            <div class="grid md:grid-cols-2 gap-4">
                 <!-- Busca -->
-                <div class="md:col-span-2">
-                    <div class="relative">
-                        <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-600"></i>
-                        <input type="text" name="search" placeholder="Buscar por nick ou email..." 
-                               value="<?= htmlspecialchars($search) ?>"
-                               class="w-full bg-white/5 border border-white/10 pl-12 pr-4 py-3 rounded-xl text-sm outline-none focus:border-red-600 transition">
-                    </div>
-                </div>
+                <form method="GET" class="relative">
+                    <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500"></i>
+                    <input type="text" 
+                           name="search" 
+                           value="<?= htmlspecialchars($search) ?>"
+                           placeholder="Buscar por nick ou email..."
+                           class="w-full bg-white/5 border border-white/10 pl-12 pr-4 py-3 rounded-xl text-sm outline-none focus:border-red-600 transition">
+                    <?php if (!empty($_GET['filter'])): ?>
+                        <input type="hidden" name="filter" value="<?= htmlspecialchars($_GET['filter']) ?>">
+                    <?php endif; ?>
+                </form>
 
-                <!-- Rank -->
-                <div>
-                    <select name="rank" class="w-full bg-zinc-900 border border-white/10 p-3 rounded-xl text-sm outline-none focus:border-red-600 transition">
-                        <option value="">Todos Ranks</option>
-                        <?php foreach ($ranks as $r): ?>
-                            <option value="<?= htmlspecialchars($r) ?>" <?= $rank_filter === $r ? 'selected' : '' ?>>
-                                <?= htmlspecialchars($r) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-
-                <!-- Ordenação -->
-                <div>
-                    <select name="order_by" class="w-full bg-zinc-900 border border-white/10 p-3 rounded-xl text-sm outline-none focus:border-red-600 transition">
-                        <option value="recent" <?= $order_by === 'recent' ? 'selected' : '' ?>>Mais Recentes</option>
-                        <option value="oldest" <?= $order_by === 'oldest' ? 'selected' : '' ?>>Mais Antigos</option>
-                        <option value="most_spent" <?= $order_by === 'most_spent' ? 'selected' : '' ?>>Maior Gasto</option>
-                        <option value="most_active" <?= $order_by === 'most_active' ? 'selected' : '' ?>>Mais Ativos</option>
-                    </select>
-                </div>
-
-                <div class="md:col-span-4 flex gap-3">
-                    <button type="submit" class="bg-red-600 hover:bg-red-700 px-8 py-3 rounded-xl font-black text-xs uppercase transition">
-                        Aplicar Filtros
-                    </button>
-                    <a href="usuarios.php" class="glass px-8 py-3 rounded-xl font-black text-xs uppercase text-zinc-500 hover:text-white transition">
-                        Limpar
+                <!-- Filtro -->
+                <div class="flex gap-2">
+                    <a href="?" class="flex-1 glass px-4 py-3 rounded-xl text-xs font-black uppercase text-center transition hover:bg-white/5 <?= empty($filter) || $filter === 'all' ? 'bg-red-600/20 text-red-500' : 'text-zinc-500' ?>">
+                        Todos
+                    </a>
+                    <a href="?filter=active<?= !empty($search) ? '&search=' . urlencode($search) : '' ?>" class="flex-1 glass px-4 py-3 rounded-xl text-xs font-black uppercase text-center transition hover:bg-white/5 <?= $filter === 'active' ? 'bg-green-600/20 text-green-500' : 'text-zinc-500' ?>">
+                        Ativos
+                    </a>
+                    <a href="?filter=banned<?= !empty($search) ? '&search=' . urlencode($search) : '' ?>" class="flex-1 glass px-4 py-3 rounded-xl text-xs font-black uppercase text-center transition hover:bg-white/5 <?= $filter === 'banned' ? 'bg-red-600/20 text-red-500' : 'text-zinc-500' ?>">
+                        Banidos
                     </a>
                 </div>
-            </form>
+            </div>
         </div>
 
         <!-- Lista de Usuários -->
-        <div class="grid gap-4">
-            <?php if (empty($users)): ?>
-                <div class="glass rounded-3xl p-24 text-center opacity-30">
-                    <i data-lucide="users" class="w-16 h-16 mx-auto mb-4 text-zinc-700"></i>
-                    <p class="text-xs font-bold uppercase tracking-widest text-zinc-700">
-                        Nenhum usuário cadastrado
-                    </p>
-                </div>
-            <?php else: ?>
+        <?php if (empty($users)): ?>
+            <div class="glass rounded-3xl p-24 text-center opacity-30">
+                <i data-lucide="users" class="w-16 h-16 mx-auto mb-4 text-zinc-700"></i>
+                <p class="text-xs font-bold uppercase tracking-widest text-zinc-700">
+                    <?= !empty($search) ? 'Nenhum usuário encontrado' : 'Nenhum usuário cadastrado ainda' ?>
+                </p>
+            </div>
+        <?php else: ?>
+            <div class="grid gap-4">
                 <?php foreach ($users as $user): ?>
-                <div class="user-card glass p-6 rounded-2xl border border-white/5">
-                    <div class="flex items-start justify-between gap-4">
+                <div class="user-card glass rounded-2xl p-6 border border-white/5">
+                    <div class="flex items-center gap-6">
                         
+                        <!-- Avatar -->
+                        <div class="relative">
+                            <img src="<?= htmlspecialchars($user['skin_url']) ?>" 
+                                 class="w-16 h-16 rounded-xl <?= $user['is_banned'] ? 'opacity-30 grayscale' : '' ?>">
+                            <?php if ($user['is_banned']): ?>
+                                <div class="absolute inset-0 flex items-center justify-center">
+                                    <i data-lucide="ban" class="w-8 h-8 text-red-500"></i>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+
                         <!-- Info Principal -->
-                        <div class="flex items-start gap-4 flex-1 min-w-0">
-                            <!-- Skin -->
-                            <img src="<?= htmlspecialchars($user['skin_url']) ?>" class="w-16 h-16 rounded-xl flex-shrink-0">
-                            
-                            <!-- Dados -->
-                            <div class="flex-1 min-w-0">
-                                <div class="flex items-center gap-3 mb-2">
-                                    <h3 class="text-lg font-black truncate"><?= htmlspecialchars($user['minecraft_nick']) ?></h3>
-                                    <span class="px-3 py-1 rounded-lg text-[10px] font-black uppercase" 
-                                          style="background: <?= $user['rank_color'] ?>15; color: <?= $user['rank_color'] ?>; border: 1px solid <?= $user['rank_color'] ?>30;">
-                                        <?= htmlspecialchars($user['rank']) ?>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-3 mb-2">
+                                <h3 class="text-lg font-black uppercase">
+                                    <?= htmlspecialchars($user['minecraft_nick']) ?>
+                                </h3>
+                                <span class="px-3 py-1 rounded-lg text-[10px] font-black uppercase border"
+                                      style="background: <?= $user['rank_color'] ?>15; color: <?= $user['rank_color'] ?>; border-color: <?= $user['rank_color'] ?>30;">
+                                    <?= htmlspecialchars($user['rank']) ?>
+                                </span>
+                                <?php if ($user['is_banned']): ?>
+                                    <span class="bg-red-500/10 text-red-500 border border-red-500/20 px-3 py-1 rounded-lg text-[10px] font-black uppercase">
+                                        Banido
                                     </span>
-                                    <?php if ($user['is_banned']): ?>
-                                        <span class="bg-red-500/10 text-red-500 border border-red-500/20 px-2 py-1 rounded text-[9px] font-black uppercase">
-                                            Banido
-                                        </span>
-                                    <?php endif; ?>
+                                <?php endif; ?>
+                            </div>
+
+                            <div class="grid grid-cols-4 gap-6 text-xs">
+                                <div>
+                                    <span class="text-zinc-600 font-bold uppercase block mb-1">Email</span>
+                                    <span class="text-zinc-400"><?= htmlspecialchars($user['email']) ?></span>
                                 </div>
-                                
-                                <p class="text-sm text-zinc-500 mb-3 truncate"><?= htmlspecialchars($user['email']) ?></p>
-                                
-                                <div class="flex flex-wrap items-center gap-4 text-xs">
-                                    <div class="flex items-center gap-2 text-zinc-500">
-                                        <i data-lucide="shopping-bag" class="w-4 h-4 text-green-500"></i>
-                                        <span><?= $user['total_purchases_count'] ?> compras</span>
-                                    </div>
-                                    <div class="flex items-center gap-2 text-zinc-500">
-                                        <i data-lucide="dollar-sign" class="w-4 h-4 text-green-500"></i>
-                                        <span><?= formatMoney($user['total_spent_sum']) ?> gasto</span>
-                                    </div>
-                                    <div class="flex items-center gap-2 text-zinc-500">
-                                        <i data-lucide="message-circle" class="w-4 h-4 text-blue-500"></i>
-                                        <span><?= $user['total_comments'] ?> comentários</span>
-                                    </div>
-                                    <div class="flex items-center gap-2 text-zinc-500">
-                                        <i data-lucide="calendar" class="w-4 h-4"></i>
-                                        <span>Desde <?= date('d/m/Y', strtotime($user['created_at'])) ?></span>
-                                    </div>
+                                <div>
+                                    <span class="text-zinc-600 font-bold uppercase block mb-1">UUID</span>
+                                    <span class="text-zinc-400 font-mono"><?= htmlspecialchars(substr($user['minecraft_uuid'], 0, 8)) ?>...</span>
                                 </div>
+                                <div>
+                                    <span class="text-zinc-600 font-bold uppercase block mb-1">Compras</span>
+                                    <span class="text-zinc-400"><?= $user['total_purchases'] ?> pedidos</span>
+                                </div>
+                                <div>
+                                    <span class="text-zinc-600 font-bold uppercase block mb-1">Total Gasto</span>
+                                    <span class="text-green-500 font-bold"><?= formatMoney($user['total_spent']) ?></span>
+                                </div>
+                            </div>
+
+                            <div class="mt-3 text-[10px] text-zinc-700 flex items-center gap-4">
+                                <span>Cadastro: <?= date('d/m/Y H:i', strtotime($user['created_at'])) ?></span>
+                                <?php if ($user['last_login']): ?>
+                                    <span>• Último login: <?= date('d/m/Y H:i', strtotime($user['last_login'])) ?></span>
+                                <?php endif; ?>
                             </div>
                         </div>
 
@@ -348,60 +299,89 @@ function formatMoney($val) {
                                     class="bg-blue-900/20 hover:bg-blue-900/30 text-blue-500 text-[10px] font-black uppercase px-4 py-2 rounded-xl transition whitespace-nowrap">
                                 Editar Rank
                             </button>
-                            
                             <a href="?toggle_ban=<?= $user['id'] ?>" 
-                               onclick="return confirm('<?= $user['is_banned'] ? 'Desbanir' : 'Banir' ?> este usuário?')"
-                               class="<?= $user['is_banned'] ? 'bg-green-900/20 hover:bg-green-900/30 text-green-500' : 'bg-red-900/20 hover:bg-red-900/30 text-red-500' ?> text-[10px] font-black uppercase px-4 py-2 rounded-xl text-center transition whitespace-nowrap">
+                               onclick="return confirm('Tem certeza?')"
+                               class="bg-yellow-900/20 hover:bg-yellow-900/30 text-yellow-500 text-[10px] font-black uppercase px-4 py-2 rounded-xl transition text-center">
                                 <?= $user['is_banned'] ? 'Desbanir' : 'Banir' ?>
+                            </a>
+                            <a href="?delete=<?= $user['id'] ?>" 
+                               onclick="return confirm('Deletar usuário permanentemente?')"
+                               class="bg-red-900/20 hover:bg-red-900/30 text-red-500 text-[10px] font-black uppercase px-4 py-2 rounded-xl transition text-center">
+                                Deletar
                             </a>
                         </div>
                     </div>
                 </div>
                 <?php endforeach; ?>
-            <?php endif; ?>
-        </div>
+            </div>
+        <?php endif; ?>
 
     </main>
 
     <!-- Modal: Editar Rank -->
     <div id="rankModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-sm p-4">
-        <div class="glass w-full max-w-md p-10 rounded-[3rem] border-blue-600/20">
-            <div class="flex items-center justify-between mb-8">
-                <h3 class="text-2xl font-black italic uppercase">
-                    Editar <span class="text-blue-600">Rank</span>
+        <div class="glass w-full max-w-md p-8 rounded-3xl border-red-600/20">
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="text-xl font-black italic uppercase">
+                    Editar <span class="text-red-600">Rank</span>
                 </h3>
                 <button onclick="closeRankModal()" class="w-10 h-10 bg-white/5 hover:bg-white/10 rounded-xl flex items-center justify-center transition">
                     <i data-lucide="x" class="w-5 h-5 text-zinc-500"></i>
                 </button>
             </div>
             
-            <form method="POST" id="rankForm" class="space-y-6">
+            <form method="POST" id="rankForm" class="space-y-5">
                 <input type="hidden" name="action" value="update_rank">
-                <input type="hidden" name="user_id" id="rankUserId">
+                <input type="hidden" name="user_id" id="userId">
+
+                <div>
+                    <label class="text-xs font-black uppercase text-zinc-500 mb-3 block">Nick</label>
+                    <input type="text" id="userNick" disabled
+                           class="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-sm">
+                </div>
 
                 <div>
                     <label class="text-xs font-black uppercase text-zinc-500 mb-3 block">Nome do Rank</label>
-                    <input type="text" name="rank" id="rankName" required
-                           class="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-sm outline-none focus:border-blue-600 transition">
+                    <input type="text" name="rank" id="userRank" required
+                           placeholder="Ex: VIP, Membro, Admin..."
+                           class="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-sm outline-none focus:border-red-600 transition">
                 </div>
 
                 <div>
                     <label class="text-xs font-black uppercase text-zinc-500 mb-3 block">Cor do Rank</label>
-                    <div class="flex gap-3">
-                        <input type="color" name="rank_color" id="rankColor" required
-                               class="w-20 h-12 rounded-xl cursor-pointer">
-                        <input type="text" id="rankColorText" readonly
-                               class="flex-1 bg-white/5 border border-white/10 p-4 rounded-xl text-sm font-mono outline-none">
+                    <div class="grid grid-cols-8 gap-2 mb-3">
+                        <?php
+                        $colors = [
+                            '#ef4444' => 'Vermelho',
+                            '#f97316' => 'Laranja', 
+                            '#eab308' => 'Amarelo',
+                            '#22c55e' => 'Verde',
+                            '#3b82f6' => 'Azul',
+                            '#8b5cf6' => 'Roxo',
+                            '#ec4899' => 'Rosa',
+                            '#9CA3AF' => 'Cinza'
+                        ];
+                        foreach ($colors as $color => $name): ?>
+                            <button type="button" 
+                                    onclick="selectColor('<?= $color ?>')"
+                                    class="w-10 h-10 rounded-lg border-2 border-white/10 hover:border-white/30 transition"
+                                    style="background: <?= $color ?>;"
+                                    title="<?= $name ?>"></button>
+                        <?php endforeach; ?>
                     </div>
+                    <input type="text" name="rank_color" id="userRankColor" required
+                           pattern="#[0-9A-Fa-f]{6}"
+                           placeholder="#ef4444"
+                           class="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-sm outline-none focus:border-red-600 transition">
                 </div>
 
-                <div class="flex gap-4 pt-4">
+                <div class="flex gap-3 pt-4">
                     <button type="button" onclick="closeRankModal()" 
-                            class="flex-1 bg-zinc-900 hover:bg-zinc-800 py-4 rounded-xl font-black uppercase text-xs transition">
+                            class="flex-1 bg-zinc-900 hover:bg-zinc-800 py-3 rounded-xl font-black uppercase text-xs transition">
                         Cancelar
                     </button>
                     <button type="submit" 
-                            class="flex-1 bg-blue-600 hover:bg-blue-700 py-4 rounded-xl font-black uppercase text-xs transition">
+                            class="flex-1 bg-red-600 hover:bg-red-700 py-3 rounded-xl font-black uppercase text-xs tracking-widest transition shadow-lg shadow-red-600/20">
                         Salvar
                     </button>
                 </div>
@@ -413,10 +393,10 @@ function formatMoney($val) {
         lucide.createIcons();
         
         function openRankModal(user) {
-            document.getElementById('rankUserId').value = user.id;
-            document.getElementById('rankName').value = user.rank;
-            document.getElementById('rankColor').value = user.rank_color;
-            document.getElementById('rankColorText').value = user.rank_color;
+            document.getElementById('userId').value = user.id;
+            document.getElementById('userNick').value = user.minecraft_nick;
+            document.getElementById('userRank').value = user.rank;
+            document.getElementById('userRankColor').value = user.rank_color;
             document.getElementById('rankModal').classList.remove('hidden');
             lucide.createIcons();
         }
@@ -425,13 +405,13 @@ function formatMoney($val) {
             document.getElementById('rankModal').classList.add('hidden');
         }
         
-        document.getElementById('rankColor')?.addEventListener('input', (e) => {
-            document.getElementById('rankColorText').value = e.target.value;
-        });
-        
-        function exportUsers() {
-            alert('Funcionalidade de exportação será implementada');
+        function selectColor(color) {
+            document.getElementById('userRankColor').value = color;
         }
+        
+        document.getElementById('rankModal').addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) closeRankModal();
+        });
     </script>
 </body>
 </html>
