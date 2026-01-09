@@ -1,5 +1,5 @@
 <!-- ============================================ -->
-<!-- ARQUIVO 3: wiki.php -->
+<!-- WIKI.PHP - ATUALIZADO -->
 <!-- ============================================ -->
 <?php
 session_start();
@@ -8,14 +8,22 @@ require_once '../../includes/db.php';
 $store_slug = basename(dirname(__FILE__));
 
 try {
-    $stmt = $pdo->prepare("SELECT s.*, sc.* FROM stores s LEFT JOIN store_customization sc ON s.id = sc.store_id WHERE s.store_slug = ? AND s.status = 'active'");
+    $stmt = $pdo->prepare("
+        SELECT s.*, sc.* 
+        FROM stores s
+        LEFT JOIN store_customization sc ON s.id = sc.store_id
+        WHERE s.store_slug = ? AND s.status = 'active'
+    ");
     $stmt->execute([$store_slug]);
     $store = $stmt->fetch();
     
     if (!$store) die("Loja não encontrada.");
     
     // Buscar página wiki
-    $stmt = $pdo->prepare("SELECT * FROM store_pages WHERE store_id = ? AND slug = 'wiki' AND is_published = 1");
+    $stmt = $pdo->prepare("
+        SELECT * FROM store_pages 
+        WHERE store_id = ? AND slug = 'wiki' AND is_published = 1
+    ");
     $stmt->execute([$store['id']]);
     $wiki_page = $stmt->fetch();
     
@@ -24,49 +32,6 @@ try {
 }
 
 $primaryColor = $store['primary_color'] ?? '#dc2626';
-
-$wiki_sections = [
-    [
-        'icon' => 'rocket',
-        'title' => 'Como Começar',
-        'items' => [
-            'Baixe o Minecraft Java Edition versão 1.8+',
-            'Entre em Multijogador e adicione nosso IP',
-            'Conecte-se e comece sua jornada!',
-            'Use /ajuda para ver comandos básicos'
-        ]
-    ],
-    [
-        'icon' => 'zap',
-        'title' => 'Comandos Básicos',
-        'items' => [
-            '/spawn - Voltar ao spawn',
-            '/sethome [nome] - Definir home',
-            '/home [nome] - Teleportar para home',
-            '/tpa [jogador] - Pedir teleporte'
-        ]
-    ],
-    [
-        'icon' => 'coins',
-        'title' => 'Economia',
-        'items' => [
-            'Ganhe dinheiro vendendo itens em /loja',
-            'Complete missões diárias para bônus',
-            'Participe de eventos especiais',
-            'Vote no servidor e receba recompensas'
-        ]
-    ],
-    [
-        'icon' => 'shield',
-        'title' => 'Proteção de Terreno',
-        'items' => [
-            'Use machado de ouro para selecionar área',
-            '/claim - Proteger sua região',
-            '/trust [jogador] - Adicionar amigos',
-            '/abandonclaim - Remover proteção'
-        ]
-    ]
-];
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -97,6 +62,8 @@ $wiki_sections = [
 </head>
 <body>
 
+    
+
     <main class="max-w-7xl mx-auto px-6 py-12">
         
         <div class="mb-12">
@@ -114,54 +81,41 @@ $wiki_sections = [
             </p>
         </div>
 
-        <?php if ($wiki_page): ?>
-            <div class="glass rounded-3xl p-10 border border-white/5">
+        <!-- IP do Servidor -->
+        <div class="glass rounded-3xl p-8 mb-8 border border-primary/20 bg-primary/5">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-bold uppercase text-zinc-500 mb-2">Conecte-se ao Servidor</p>
+                    <p class="text-2xl font-black uppercase">
+                        play.<?= strtolower($store['store_name']) ?>.com.br
+                    </p>
+                </div>
+                <button onclick="copyIP()" class="bg-primary hover:brightness-110 px-6 py-3 rounded-xl font-black uppercase text-sm transition">
+                    <i data-lucide="copy" class="w-4 h-4 inline mr-2"></i>
+                    Copiar IP
+                </button>
+            </div>
+        </div>
+
+        <!-- Conteúdo da Wiki -->
+        <div class="glass rounded-3xl p-10 border border-white/5">
+            <?php if ($wiki_page): ?>
                 <div class="prose prose-invert max-w-none">
-                    <?= nl2br(htmlspecialchars($wiki_page['content'])) ?>
-                </div>
-            </div>
-        <?php else: ?>
-            
-            <!-- IP do Servidor -->
-            <div class="glass rounded-3xl p-8 mb-8 border border-primary/20 bg-primary/5">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <p class="text-xs font-bold uppercase text-zinc-500 mb-2">Conecte-se ao Servidor</p>
-                        <p class="text-2xl font-black uppercase">
-                            play.<?= strtolower($store['store_name']) ?>.com.br
-                        </p>
+                    <h2 class="text-3xl font-black uppercase mb-6">
+                        <?= htmlspecialchars($wiki_page['title']) ?>
+                    </h2>
+                    <div class="text-zinc-300 leading-relaxed whitespace-pre-line">
+                        <?= nl2br(htmlspecialchars($wiki_page['content'])) ?>
                     </div>
-                    <button onclick="copyIP()" class="bg-primary hover:brightness-110 px-6 py-3 rounded-xl font-black uppercase text-sm transition">
-                        <i data-lucide="copy" class="w-4 h-4 inline mr-2"></i>
-                        Copiar IP
-                    </button>
                 </div>
-            </div>
-
-            <!-- Seções -->
-            <div class="grid md:grid-cols-2 gap-6">
-                <?php foreach ($wiki_sections as $section): ?>
-                <div class="glass rounded-2xl p-6 border border-white/5">
-                    <div class="flex items-center gap-3 mb-4">
-                        <div class="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
-                            <i data-lucide="<?= $section['icon'] ?>" class="w-5 h-5 text-primary"></i>
-                        </div>
-                        <h3 class="font-black uppercase text-lg"><?= $section['title'] ?></h3>
-                    </div>
-                    
-                    <ul class="space-y-2">
-                        <?php foreach ($section['items'] as $item): ?>
-                        <li class="flex items-start gap-2 text-sm text-zinc-400">
-                            <i data-lucide="check" class="w-4 h-4 text-primary flex-shrink-0 mt-0.5"></i>
-                            <span><?= $item ?></span>
-                        </li>
-                        <?php endforeach; ?>
-                    </ul>
+            <?php else: ?>
+                <div class="text-center py-12">
+                    <i data-lucide="book-open" class="w-16 h-16 mx-auto mb-4 text-zinc-700"></i>
+                    <h3 class="text-xl font-black uppercase text-zinc-600 mb-2">Wiki em Construção</h3>
+                    <p class="text-zinc-500">Em breve teremos guias completos por aqui!</p>
                 </div>
-                <?php endforeach; ?>
-            </div>
-
-        <?php endif; ?>
+            <?php endif; ?>
+        </div>
 
     </main>
 

@@ -1,21 +1,35 @@
-<!-- ============================================ -->
-<!-- ARQUIVO 2: equipe.php -->
-<!-- ============================================ -->
 <?php
+/**
+ * ============================================
+ * EQUIPE.PHP - ATUALIZADO
+ * ============================================
+ * Busca membros da staff do banco de dados
+ * stores/Teste/equipe.php
+ */
+
 session_start();
 require_once '../../includes/db.php';
 
 $store_slug = basename(dirname(__FILE__));
 
 try {
-    $stmt = $pdo->prepare("SELECT s.*, sc.* FROM stores s LEFT JOIN store_customization sc ON s.id = sc.store_id WHERE s.store_slug = ? AND s.status = 'active'");
+    $stmt = $pdo->prepare("
+        SELECT s.*, sc.* 
+        FROM stores s
+        LEFT JOIN store_customization sc ON s.id = sc.store_id
+        WHERE s.store_slug = ? AND s.status = 'active'
+    ");
     $stmt->execute([$store_slug]);
     $store = $stmt->fetch();
     
     if (!$store) die("Loja não encontrada.");
     
     // Buscar membros da equipe
-    $stmt = $pdo->prepare("SELECT * FROM store_team WHERE store_id = ? AND is_visible = 1 ORDER BY order_position ASC");
+    $stmt = $pdo->prepare("
+        SELECT * FROM store_team 
+        WHERE store_id = ? AND is_visible = 1 
+        ORDER BY order_position ASC, created_at ASC
+    ");
     $stmt->execute([$store['id']]);
     $team_members = $stmt->fetchAll();
     
@@ -24,6 +38,7 @@ try {
 }
 
 $primaryColor = $store['primary_color'] ?? '#dc2626';
+$is_logged = isset($_SESSION['store_user_logged']) && $_SESSION['store_user_logged'] === true;
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -90,8 +105,9 @@ $primaryColor = $store['primary_color'] ?? '#dc2626';
                         <img src="<?= htmlspecialchars($member['skin_url']) ?>" 
                              class="w-full h-full rounded-xl object-cover"
                              alt="<?= htmlspecialchars($member['minecraft_nick']) ?>">
-                        <div class="absolute -bottom-2 -right-2 w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                            <i data-lucide="shield-check" class="w-4 h-4"></i>
+                        <div class="absolute -bottom-2 -right-2 w-8 h-8 rounded-lg flex items-center justify-center"
+                             style="background: <?= htmlspecialchars($member['role_color']) ?>;">
+                            <i data-lucide="shield-check" class="w-4 h-4 text-white"></i>
                         </div>
                     </div>
                     
