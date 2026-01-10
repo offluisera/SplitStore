@@ -86,6 +86,30 @@ $primaryColor = $store['primary_color'] ?? '#dc2626';
         body { background: #0f0f0f; color: white; font-family: 'Inter', sans-serif; }
         .glass { background: rgba(255, 255, 255, 0.02); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.05); }
     </style>
+
+    <style>
+        /* FORCE THEME COLORS - Sobrescreve Tailwind */
+        .bg-primary,
+        button.bg-primary,
+        a.bg-primary,
+        .text-primary {
+            color: var(--primary) !important;
+        }
+        
+        .bg-gradient-to-r.from-primary {
+            background: linear-gradient(to right, var(--primary), var(--accent)) !important;
+        }
+        
+        .border-primary {
+            border-color: var(--primary) !important;
+        }
+        
+        .gradient-text {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%) !important;
+            -webkit-background-clip: text !important;
+            -webkit-text-fill-color: transparent !important;
+        }
+    </style>
 </head>
 <body>
 

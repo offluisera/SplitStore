@@ -1,29 +1,28 @@
 <?php
 /**
  * ========================================================================
- * SCRIPT AUTOMÁTICO: ATUALIZA TODAS AS PÁGINAS PARA USAR THEME ENGINE
+ * CORREÇÃO: Cores do Tailwind + Checkboxes na Customização
  * ========================================================================
  * 
- * Salve como: stores/Teste/update_pages.php
- * Acesse: http://seu-site.com/stores/Teste/update_pages.php
- * 
- * ⚠️ EXECUTE APENAS UMA VEZ E DELETE DEPOIS!
+ * Salve como: stores/Teste/fix_theme_colors.php
+ * Acesse UMA VEZ: http://seu-site.com/stores/Teste/fix_theme_colors.php
+ * DELETE após executar!
  */
 
 $store_dir = __DIR__;
-$backup_dir = $store_dir . '/backups_' . date('Ymd_His');
+$backup_dir = $store_dir . '/fix_backup_' . date('Ymd_His');
 
-// Páginas que serão atualizadas
+// Páginas para corrigir
 $pages = [
+    'index.php',
     'loja.php',
-    'noticias.php', 
+    'noticias.php',
     'wiki.php',
     'regras.php',
     'equipe.php'
 ];
 
 $results = [];
-$errors = [];
 
 // Criar backup
 if (!file_exists($backup_dir)) {
@@ -35,7 +34,6 @@ foreach ($pages as $page) {
     $file = $store_dir . '/' . $page;
     
     if (!file_exists($file)) {
-        $errors[] = "❌ Arquivo não encontrado: $page";
         continue;
     }
     
@@ -48,93 +46,93 @@ foreach ($pages as $page) {
         $original = $content;
         
         // ==========================================
-        // 1. ADICIONAR THEME ENGINE REQUIRE
+        // REMOVER TAILWIND CONFIG DUPLICADO
         // ==========================================
-        if (!strpos($content, "require_once '../../includes/theme_engine.php'")) {
-            $content = str_replace(
-                "require_once '../../includes/db.php';",
-                "require_once '../../includes/db.php';\nrequire_once '../../includes/theme_engine.php'; // ← Theme Engine",
-                $content
-            );
+        // Remove configs Tailwind duplicadas (mantém apenas uma)
+        $pattern = '/<script>\s*tailwind\.config\s*=\s*\{[^}]+\}\s*<\/script>/i';
+        preg_match_all($pattern, $content, $matches);
+        
+        if (count($matches[0]) > 1) {
+            // Remove todas as ocorrências duplicadas
+            $content = preg_replace($pattern, '', $content, count($matches[0]) - 1);
+            $results[] = "✅ {$page}: Removido Tailwind config duplicado";
         }
         
         // ==========================================
-        // 2. ADICIONAR INICIALIZAÇÃO DO THEME
+        // ADICIONAR ESTILO INLINE PARA SOBRESCREVER TAILWIND
         // ==========================================
-        if (!strpos($content, '$theme = new ThemeEngine')) {
-            // Procura onde a loja é buscada e adiciona logo depois
-            $pattern = '/(if \(\!\$store\) die\(.*?\);)/s';
-            $replacement = '$1' . "\n    \n    // Inicializa Theme Engine\n    \$theme = new ThemeEngine(\$pdo, \$store['id']);\n    \n    // Busca menu para header\n    \$stmt = \$pdo->prepare(\"\n        SELECT * FROM store_menu \n        WHERE store_id = ? AND is_enabled = 1\n        ORDER BY order_position ASC\n    \");\n    \$stmt->execute([\$store['id']]);\n    \$menu_items = \$stmt->fetchAll(PDO::FETCH_ASSOC);";
+        // Adiciona CSS que força as cores corretas DEPOIS do Tailwind
+        if (!strpos($content, 'FORCE THEME COLORS')) {
+            $forceColors = "
+    <style>
+        /* FORCE THEME COLORS - Sobrescreve Tailwind */
+        .bg-primary,
+        button.bg-primary,
+        a.bg-primary,
+        .text-primary {
+            color: var(--primary) !important;
+        }
+        
+        .bg-gradient-to-r.from-primary {
+            background: linear-gradient(to right, var(--primary), var(--accent)) !important;
+        }
+        
+        .border-primary {
+            border-color: var(--primary) !important;
+        }
+        
+        .gradient-text {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%) !important;
+            -webkit-background-clip: text !important;
+            -webkit-text-fill-color: transparent !important;
+        }
+    </style>";
             
-            $content = preg_replace($pattern, $replacement, $content);
+            // Adiciona antes de </head>
+            $content = str_replace('</head>', $forceColors . "\n</head>", $content);
+            $results[] = "✅ {$page}: Adicionado force colors";
         }
         
-        // ==========================================
-        // 3. SUBSTITUIR <HEAD> CONTENT
-        // ==========================================
-        // Remove imports de fontes antigas
-        $content = preg_replace(
-            '/<link[^>]*fonts\.googleapis\.com[^>]*>/i',
-            '',
-            $content
-        );
-        
-        // Adiciona renderHead() após <title>
-        if (!strpos($content, '$theme->renderHead()')) {
-            $content = preg_replace(
-                '/(<title>.*?<\/title>)/s',
-                '$1' . "\n    \n    <?php \$theme->renderHead(); // ← Theme Engine CSS + Fonts ?>\n    ",
-                $content
-            );
-        }
-        
-        // ==========================================
-        // 4. ADICIONAR HEADER COMPONENT
-        // ==========================================
-        if (!strpos($content, "include __DIR__ . '/components/header.php'")) {
-            // Remove headers antigos
-            $content = preg_replace(
-                '/<header.*?<\/header>/s',
-                '<?php include __DIR__ . \'/components/header.php\'; ?>',
-                $content,
-                1 // Apenas o primeiro
-            );
-        }
-        
-        // ==========================================
-        // 5. ADICIONAR SCRIPTS ANTES DE </body>
-        // ==========================================
-        if (!strpos($content, '$theme->renderScripts()')) {
-            $content = preg_replace(
-                '/(<script>\s*lucide\.createIcons\(\);)/i',
-                '<?php $theme->renderScripts(); // ← Theme Engine JS ?>' . "\n\n    " . '$1',
-                $content
-            );
-        }
-        
-        // ==========================================
-        // 6. ADICIONAR CONFIG DO TAILWIND
-        // ==========================================
-        if (!strpos($content, 'tailwind.config')) {
-            $tailwindConfig = "    <script>\n        tailwind.config = {\n            theme: {\n                extend: {\n                    colors: {\n                        primary: '<?= \$primaryColor ?>',\n                        secondary: '<?= \$store[\"secondary_color\"] ?? \"#0f172a\" ?>'\n                    }\n                }\n            }\n        }\n    </script>";
-            
-            $content = str_replace(
-                '<script src="https://cdn.tailwindcss.com"></script>',
-                '<script src="https://cdn.tailwindcss.com"></script>' . "\n" . $tailwindConfig,
-                $content
-            );
-        }
-        
-        // Salvar
+        // Salvar se mudou
         if ($content !== $original) {
             file_put_contents($file, $content);
-            $results[] = "✅ $page atualizado com sucesso!";
-        } else {
-            $results[] = "ℹ️ $page já estava atualizado";
+            $results[] = "✅ {$page}: Atualizado com sucesso!";
         }
         
     } catch (Exception $e) {
-        $errors[] = "❌ Erro em $page: " . $e->getMessage();
+        $results[] = "❌ Erro em {$page}: " . $e->getMessage();
+    }
+}
+
+// ==========================================
+// CORRIGIR CUSTOMIZE.PHP - CHECKBOXES
+// ==========================================
+$customize_file = dirname(__DIR__, 2) . '/client/customize.php';
+
+if (file_exists($customize_file)) {
+    try {
+        copy($customize_file, $backup_dir . '/customize.php');
+        
+        $content = file_get_contents($customize_file);
+        $original = $content;
+        
+        // Corrige a verificação dos checkboxes
+        // Problema: estava usando $c['show_particles'] direto sem verificar se é string ou int
+        
+        $old_checkbox_pattern = '/\<\?=\s*\$c\[\'(show_[^\']+)\'\]\s*\?\s*\'checked\'\s*:\s*\'\'\s*\?\>/';
+        $new_checkbox = '<?= !empty($c[\'$1\']) ? \'checked\' : \'\' ?>';
+        
+        $content = preg_replace($old_checkbox_pattern, $new_checkbox, $content);
+        
+        if ($content !== $original) {
+            file_put_contents($customize_file, $content);
+            $results[] = "✅ customize.php: Checkboxes corrigidas!";
+        } else {
+            $results[] = "ℹ️ customize.php: Já estava correto";
+        }
+        
+    } catch (Exception $e) {
+        $results[] = "❌ Erro no customize.php: " . $e->getMessage();
     }
 }
 
@@ -144,16 +142,15 @@ foreach ($pages as $page) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🚀 Atualização de Páginas - Theme Engine</title>
+    <title>🔧 Correção de Cores e Checkboxes</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         
         body {
-            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a0a2e 100%);
             color: #fff;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Segoe UI', sans-serif;
             padding: 40px 20px;
-            line-height: 1.6;
         }
         
         .container {
@@ -165,36 +162,15 @@ foreach ($pages as $page) {
             text-align: center;
             margin-bottom: 50px;
             padding: 40px;
-            background: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
+            background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
             border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(139, 92, 246, 0.3);
+            box-shadow: 0 20px 60px rgba(220, 38, 38, 0.3);
         }
         
         .header h1 {
             font-size: 42px;
             font-weight: 900;
             margin-bottom: 15px;
-            text-shadow: 0 2px 10px rgba(0,0,0,0.3);
-        }
-        
-        .header p {
-            font-size: 18px;
-            opacity: 0.95;
-        }
-        
-        .warning {
-            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-            border-radius: 15px;
-            padding: 25px;
-            margin-bottom: 30px;
-            text-align: center;
-            box-shadow: 0 10px 30px rgba(239, 68, 68, 0.3);
-        }
-        
-        .warning strong {
-            font-size: 22px;
-            display: block;
-            margin-bottom: 10px;
         }
         
         .section {
@@ -210,9 +186,8 @@ foreach ($pages as $page) {
             font-size: 24px;
             font-weight: 800;
             margin-bottom: 20px;
-            color: #8b5cf6;
+            color: #dc2626;
             text-transform: uppercase;
-            letter-spacing: 1px;
         }
         
         .result-item {
@@ -220,14 +195,6 @@ foreach ($pages as $page) {
             margin: 10px 0;
             border-radius: 10px;
             font-size: 15px;
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            transition: all 0.3s;
-        }
-        
-        .result-item:hover {
-            transform: translateX(5px);
         }
         
         .result-item.success {
@@ -245,64 +212,22 @@ foreach ($pages as $page) {
             border-left: 4px solid #3b82f6;
         }
         
-        .icon {
-            font-size: 24px;
-            flex-shrink: 0;
-        }
-        
-        .stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-top: 30px;
-        }
-        
-        .stat-card {
-            background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(236, 72, 153, 0.1) 100%);
-            border: 1px solid rgba(139, 92, 246, 0.3);
-            border-radius: 15px;
-            padding: 25px;
-            text-align: center;
-        }
-        
-        .stat-value {
-            font-size: 48px;
-            font-weight: 900;
-            background: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 10px;
-        }
-        
-        .stat-label {
-            font-size: 14px;
-            opacity: 0.7;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        
         .btn {
             display: inline-block;
             padding: 15px 35px;
-            background: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
+            background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
             color: white;
             text-decoration: none;
             border-radius: 12px;
             font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 1px;
             margin: 10px;
             transition: all 0.3s;
-            box-shadow: 0 10px 30px rgba(139, 92, 246, 0.3);
         }
         
         .btn:hover {
             transform: translateY(-3px);
-            box-shadow: 0 15px 40px rgba(139, 92, 246, 0.5);
-        }
-        
-        .btn-secondary {
-            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            box-shadow: 0 15px 40px rgba(220, 38, 38, 0.5);
         }
         
         .actions {
@@ -310,23 +235,18 @@ foreach ($pages as $page) {
             margin-top: 40px;
         }
         
-        .code {
-            background: #000;
-            border: 1px solid rgba(139, 92, 246, 0.3);
-            border-radius: 10px;
-            padding: 20px;
-            margin: 15px 0;
-            overflow-x: auto;
-            font-family: 'Courier New', monospace;
-            color: #8b5cf6;
+        .warning {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 30px;
+            text-align: center;
         }
         
-        footer {
-            text-align: center;
-            margin-top: 60px;
-            padding-top: 30px;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            opacity: 0.6;
+        .warning strong {
+            font-size: 22px;
+            display: block;
+            margin-bottom: 10px;
         }
     </style>
 </head>
@@ -334,151 +254,72 @@ foreach ($pages as $page) {
     <div class="container">
         
         <div class="header">
-            <h1>🚀 Atualização Completa</h1>
-            <p>Theme Engine integrado com sucesso em todas as páginas!</p>
+            <h1>🔧 Correção Aplicada</h1>
+            <p>Cores do tema e checkboxes corrigidos!</p>
+        </div>
+        
+        <div class="section">
+            <h2>✅ Resultados</h2>
+            <?php foreach ($results as $result): ?>
+                <?php
+                $class = 'info';
+                if (strpos($result, '✅') !== false) $class = 'success';
+                if (strpos($result, '❌') !== false) $class = 'error';
+                ?>
+                <div class="result-item <?= $class ?>">
+                    <?= htmlspecialchars($result) ?>
+                </div>
+            <?php endforeach; ?>
+        </div>
+        
+        <div class="section">
+            <h2>🔍 O Que Foi Feito</h2>
+            <div class="result-item info">
+                <strong>1. Removido Tailwind Config duplicado</strong><br>
+                Cada página tinha 2 configs Tailwind conflitantes
+            </div>
+            <div class="result-item info">
+                <strong>2. Adicionado Force Colors CSS</strong><br>
+                CSS com !important para sobrescrever cores do Tailwind
+            </div>
+            <div class="result-item info">
+                <strong>3. Corrigido checkboxes do customize.php</strong><br>
+                Agora verifica corretamente o valor salvo no banco
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>📋 Teste Agora</h2>
+            <div class="result-item success">
+                <strong>1.</strong> Vá em <code>/client/customize.php</code>
+            </div>
+            <div class="result-item success">
+                <strong>2.</strong> Marque as checkboxes de "Efeitos Especiais"
+            </div>
+            <div class="result-item success">
+                <strong>3.</strong> Clique em "Salvar Tudo"
+            </div>
+            <div class="result-item success">
+                <strong>4.</strong> Recarregue a página - checkboxes devem continuar marcadas
+            </div>
+            <div class="result-item success">
+                <strong>5.</strong> Mude o tema e veja as cores mudarem corretamente
+            </div>
         </div>
         
         <div class="warning">
-            <strong>⚠️ ATENÇÃO!</strong>
-            <p>Delete este arquivo (update_pages.php) após verificar que tudo está funcionando!</p>
+            <strong>⚠️ IMPORTANTE!</strong>
+            <p>DELETE este arquivo após testar!</p>
         </div>
         
-        <!-- RESULTADOS -->
-        <?php if (!empty($results)): ?>
-        <div class="section">
-            <h2>✅ Operações Realizadas</h2>
-            <?php foreach ($results as $result): ?>
-                <div class="result-item <?= strpos($result, '✅') !== false ? 'success' : 'info' ?>">
-                    <span class="icon"><?= strpos($result, '✅') !== false ? '✅' : 'ℹ️' ?></span>
-                    <span><?= htmlspecialchars($result) ?></span>
-                </div>
-            <?php endforeach; ?>
-        </div>
-        <?php endif; ?>
-        
-        <!-- ERROS -->
-        <?php if (!empty($errors)): ?>
-        <div class="section">
-            <h2>❌ Erros Encontrados</h2>
-            <?php foreach ($errors as $error): ?>
-                <div class="result-item error">
-                    <span class="icon">❌</span>
-                    <span><?= htmlspecialchars($error) ?></span>
-                </div>
-            <?php endforeach; ?>
-        </div>
-        <?php endif; ?>
-        
-        <!-- ESTATÍSTICAS -->
-        <div class="section">
-            <h2>📊 Estatísticas</h2>
-            <div class="stats">
-                <div class="stat-card">
-                    <div class="stat-value"><?= count(array_filter($results, fn($r) => strpos($r, '✅') !== false)) ?></div>
-                    <div class="stat-label">Páginas Atualizadas</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value"><?= count($errors) ?></div>
-                    <div class="stat-label">Erros</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value"><?= count($pages) ?></div>
-                    <div class="stat-label">Total Processadas</div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- O QUE FOI FEITO -->
-        <div class="section">
-            <h2>🔧 Alterações Aplicadas</h2>
-            <div class="result-item info">
-                <span class="icon">1️⃣</span>
-                <span>Adicionado <code>require_once theme_engine.php</code></span>
-            </div>
-            <div class="result-item info">
-                <span class="icon">2️⃣</span>
-                <span>Inicializado <code>$theme = new ThemeEngine()</code></span>
-            </div>
-            <div class="result-item info">
-                <span class="icon">3️⃣</span>
-                <span>Adicionado busca de menu para header</span>
-            </div>
-            <div class="result-item info">
-                <span class="icon">4️⃣</span>
-                <span>Substituído imports de fontes por <code>$theme->renderHead()</code></span>
-            </div>
-            <div class="result-item info">
-                <span class="icon">5️⃣</span>
-                <span>Adicionado component <code>header.php</code> universal</span>
-            </div>
-            <div class="result-item info">
-                <span class="icon">6️⃣</span>
-                <span>Adicionado <code>$theme->renderScripts()</code> antes de &lt;/body&gt;</span>
-            </div>
-            <div class="result-item info">
-                <span class="icon">7️⃣</span>
-                <span>Configurado Tailwind com cores dinâmicas</span>
-            </div>
-        </div>
-        
-        <!-- PRÓXIMOS PASSOS -->
-        <div class="section">
-            <h2>📋 Próximos Passos</h2>
-            <div class="result-item info">
-                <span class="icon">1️⃣</span>
-                <span>Acesse cada página e verifique se está funcionando</span>
-            </div>
-            <div class="result-item info">
-                <span class="icon">2️⃣</span>
-                <span>Vá em <code>client/customize.php</code> e mude o tema</span>
-            </div>
-            <div class="result-item info">
-                <span class="icon">3️⃣</span>
-                <span>Verifique se o tema aplica em TODAS as páginas</span>
-            </div>
-            <div class="result-item info">
-                <span class="icon">4️⃣</span>
-                <span>Teste o menu de navegação</span>
-            </div>
-            <div class="result-item success">
-                <span class="icon">✅</span>
-                <span><strong>DELETE este arquivo (update_pages.php) após testar!</strong></span>
-            </div>
-        </div>
-        
-        <!-- BACKUP INFO -->
-        <div class="section">
-            <h2>💾 Backup dos Arquivos Originais</h2>
-            <p style="margin-bottom: 15px;">Os arquivos originais foram salvos em:</p>
-            <div class="code">
-                <?= htmlspecialchars($backup_dir) ?>
-            </div>
-            <p style="margin-top: 15px; opacity: 0.7; font-size: 14px;">
-                💡 Se algo der errado, você pode restaurar os arquivos desta pasta.
-            </p>
-        </div>
-        
-        <!-- AÇÕES -->
         <div class="actions">
             <a href="index.php" class="btn">🏠 Ir para Home</a>
-            <a href="loja.php" class="btn btn-secondary">🛒 Testar Loja</a>
-            <a href="wiki.php" class="btn btn-secondary">📖 Testar Wiki</a>
-            <a href="../../../client/customize.php" class="btn" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">🎨 Abrir Customização</a>
+            <a href="../../client/customize.php" class="btn">🎨 Testar Customização</a>
         </div>
         
-        <!-- WARNING FINAL -->
-        <div class="warning" style="margin-top: 50px;">
-            <strong>🗑️ IMPORTANTE:</strong>
-            <p>Após verificar que tudo está funcionando, DELETE este arquivo!</p>
-            <div class="code" style="margin-top: 20px;">
-                rm stores/Teste/update_pages.php
-            </div>
+        <div style="text-align: center; margin-top: 40px; opacity: 0.5;">
+            <p>Backup salvo em: <?= htmlspecialchars($backup_dir) ?></p>
         </div>
-        
-        <footer>
-            <p>SplitStore Theme Engine Auto-Update v3.1</p>
-            <p>Executado em <?= date('d/m/Y H:i:s') ?></p>
-        </footer>
     </div>
 </body>
 </html>

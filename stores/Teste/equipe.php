@@ -95,6 +95,30 @@ $is_logged = isset($_SESSION['store_user_logged']) && $_SESSION['store_user_logg
         .member-card { transition: all 0.3s; }
         .member-card:hover { transform: translateY(-8px); box-shadow: 0 20px 60px -20px rgba(220, 38, 38, 0.5); }
     </style>
+
+    <style>
+        /* FORCE THEME COLORS - Sobrescreve Tailwind */
+        .bg-primary,
+        button.bg-primary,
+        a.bg-primary,
+        .text-primary {
+            color: var(--primary) !important;
+        }
+        
+        .bg-gradient-to-r.from-primary {
+            background: linear-gradient(to right, var(--primary), var(--accent)) !important;
+        }
+        
+        .border-primary {
+            border-color: var(--primary) !important;
+        }
+        
+        .gradient-text {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%) !important;
+            -webkit-background-clip: text !important;
+            -webkit-text-fill-color: transparent !important;
+        }
+    </style>
 </head>
 <body>
 
